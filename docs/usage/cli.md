@@ -1,26 +1,36 @@
 # CLI Reference
 
-Aetheris exposes a single entrypoint with global options accepted either before
+Aetheris exposes a single entrypoint. Global options are accepted either before
 or after the subcommand.
 
 ## Global options
 
-| Option | Meaning |
-|---|---|
-| `--config PATH` | Settings file; defaults to `$AETHERIS_CONFIG` |
-| `--db PATH` | DuckDB graph file (default `./aetheris.duckdb`) |
-| `--raw PATH` | SQLite raw payload file (default `./aetheris-raw.db`) |
-| `--json` | Emit machine-readable JSON on stdout |
-| `--trace` | Force OpenTelemetry span export |
+<table>
+  <thead>
+    <tr><th scope="col">Option</th><th scope="col">Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>--config PATH</code></td><td>Settings file; defaults to <code>$AETHERIS_CONFIG</code></td></tr>
+    <tr><td><code>--db PATH</code></td><td>DuckDB graph file (default <code>./aetheris.duckdb</code>)</td></tr>
+    <tr><td><code>--raw PATH</code></td><td>SQLite raw payload file (default <code>./aetheris-raw.db</code>)</td></tr>
+    <tr><td><code>--json</code></td><td>Emit machine-readable JSON on stdout</td></tr>
+    <tr><td><code>--trace</code></td><td>Force OpenTelemetry span export</td></tr>
+  </tbody>
+</table>
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | Success |
-| `1` | Runtime failure |
-| `2` | Usage error |
-| `3` | Gate failure (docstrings, build, accessibility, or license) |
+<table>
+  <thead>
+    <tr><th scope="col">Code</th><th scope="col">Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>0</code></td><td>Success</td></tr>
+    <tr><td><code>1</code></td><td>Runtime failure</td></tr>
+    <tr><td><code>2</code></td><td>Usage error</td></tr>
+    <tr><td><code>3</code></td><td>Gate failure (docstrings, build, accessibility, or licence)</td></tr>
+  </tbody>
+</table>
 
 ## Commands
 
@@ -59,7 +69,7 @@ aetheris docs open       # print the preview URL
 
 ### `aetheris query`
 
-Read-only graph queries (see the API reference for the underlying Python API).
+Read-only graph queries.
 
 ```bash
 aetheris query influencers --id equity:NASDAQ:AAPL --top 5 [--json]
@@ -70,7 +80,7 @@ aetheris query edges       --from NODE_ID [--min-confidence FLOAT] [--json]
 ### `aetheris check-licenses`
 
 Constitution Principle I gate. Exits `3` if any *unaccepted* non-permissive
-license is found; `--no-exemptions` ignores the accepted deviations.
+licence is found. `--no-exemptions` ignores the accepted deviations.
 
 ### `aetheris status`
 

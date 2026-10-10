@@ -297,7 +297,7 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
         for argv, name in [
             (["npx", "html-validate", "site/**/*.html", "--formatter", "stylish"],
              "accessibility gate — structural (FR-019)"),
-            ([sys.executable, "scripts/check_a11y_rendered.py", "site/"],
+            (["node", "scripts/check_a11y_rendered.js", "site/"],
              "accessibility gate — rendered (FR-019)"),
         ]:
             ok, detail = _run_gate(argv, name=name)

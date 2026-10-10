@@ -99,4 +99,4 @@ jobs:
         run: npx html-validate "site/**/*.html" --formatter stylish
 
       - name: Accessibility gate — rendered
-        run: .venv/bin/python scripts/check_a11y_rendered.py site/
+        run: node scripts/check_a11y_rendered.js site/

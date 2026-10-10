@@ -68,7 +68,7 @@ for `graph.repository`, and confirm it renders with signatures, parameters, and 
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implement the rendered accessibility checker in `scripts/check_a11y_rendered.py` using Playwright to load each built HTML page and verify computed colour contrast, keyboard focus order, and focus visibility, exiting non-zero on violation and listing the covered WCAG rule ids in its module docstring so breadth is auditable (FR-019, FR-020, VR-8)
+- [X] T012 [US1] Implement the rendered accessibility checker in `scripts/check_a11y_rendered.py` using Playwright to load each built HTML page and verify computed colour contrast, keyboard focus order, and focus visibility, exiting non-zero on violation and listing the covered WCAG rule ids in its module docstring so breadth is auditable (FR-019, FR-020, VR-8)
 - [ ] T013 [US1] Implement the secret-scan gate in `src/cli/main.py` that scans the built `site/` directory for credential-shaped patterns and exits non-zero on a match, because the site is publicly readable (FR-017, VR-5)
 - [ ] T014 [P] [US1] Author the landing page in `docs/index.md` covering what the project does, its current status, and links to installation, CLI usage, and the API reference
 - [ ] T015 [P] [US1] Author the installation and first-run guide in `docs/installation.md` covering environment setup, the `docs` extra, and a dry-run invocation

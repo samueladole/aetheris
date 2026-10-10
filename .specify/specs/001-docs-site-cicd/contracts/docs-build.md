@@ -29,7 +29,7 @@ Execution stops at the first failing gate; a partial build is never published.
 | 2 | Secret scan | pattern scan over built `site/` output | Any credential-shaped string is found (VR-5, FR-017) |
 | 3 | Site build | `mkdocs build --strict` | Any warning or error, including an unresolved nav entry |
 | 4a | Accessibility — structural | `html-validate site/**/*.html` | Any rule violation (VR-4) |
-| 4b | Accessibility — rendered | `python scripts/check_a11y_rendered.py site/` | Any contrast or focus violation (VR-4, VR-8) |
+| 4b | Accessibility — rendered | `node scripts/check_a11y_rendered.js site/` | Any contrast or focus violation (VR-4, VR-8) |
 
 ## Exit codes
 

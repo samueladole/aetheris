@@ -2,7 +2,7 @@
 
 Vocabulary used throughout:
   * *static gate*  — ``html-validate`` over the built HTML files.
-  * *rendered gate* — ``scripts/check_a11y_rendered.py``, which drives a real
+  * *rendered gate* — ``scripts/check_a11y_rendered.js``, which drives a real
     browser to check computed contrast and keyboard focus.
   * *fail closed*  — a gate that cannot execute, times out, or errors reports
     FAILURE. The opposite (reporting success while broken) is *fail open*.
@@ -22,7 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BAD_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "docs" / "a11y-bad.html"
-RENDERED_CHECKER = REPO_ROOT / "scripts" / "check_a11y_rendered.py"
+RENDERED_CHECKER = REPO_ROOT / "scripts" / "check_a11y_rendered.js"
 NODE = "npx"
 
 
@@ -50,7 +50,7 @@ requires_htmlvalidate = pytest.mark.skipif(
 )
 requires_rendered = pytest.mark.skipif(
     not _rendered_available(),
-    reason="scripts/check_a11y_rendered.py not implemented yet (T012)",
+    reason="scripts/check_a11y_rendered.js missing or Node deps not installed (T012)",
 )
 
 
@@ -109,7 +109,7 @@ class TestRenderedGateFailsClosed:
     def test_rendered_gate_rejects_the_bad_fixture(self):
         """Test that rendered gate rejects the bad fixture."""
         proc = _run(
-            [sys.executable, str(RENDERED_CHECKER), str(BAD_FIXTURE.parent)]
+            ["node", str(RENDERED_CHECKER), str(BAD_FIXTURE.parent)]
         )
         assert proc.returncode != 0, (
             "the rendered checker accepted a page with low contrast and skipped "
@@ -120,7 +120,7 @@ class TestRenderedGateFailsClosed:
     def test_rendered_gate_names_the_contrast_violation(self):
         """Test that rendered gate names the contrast violation."""
         proc = _run(
-            [sys.executable, str(RENDERED_CHECKER), str(BAD_FIXTURE.parent)]
+            ["node", str(RENDERED_CHECKER), str(BAD_FIXTURE.parent)]
         )
         assert "contrast" in (proc.stdout + proc.stderr).lower()
 

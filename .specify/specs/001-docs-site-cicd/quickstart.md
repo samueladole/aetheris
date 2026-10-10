@@ -119,7 +119,7 @@ invalid nesting, duplicate ids/attrs.
 ### 7b. Rendered gate — contrast and keyboard focus
 
 ```bash
-python scripts/check_a11y_rendered.py site/
+node scripts/check_a11y_rendered.js site/
 ```
 
 **Expected**: exit `0`. This is the bespoke Playwright checker (Apache-2.0) that computes
@@ -148,7 +148,7 @@ cat > /tmp/a11y-fixture/bad.html <<'EOF'
 EOF
 
 npx html-validate /tmp/a11y-fixture/bad.html
-python scripts/check_a11y_rendered.py /tmp/a11y-fixture/
+node scripts/check_a11y_rendered.js /tmp/a11y-fixture/
 ```
 
 **Expected**: structural gate exits `1` with rules for missing alt text, heading order, and
