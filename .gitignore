@@ -1,0 +1,22 @@
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Project data & artifacts
+*.duckdb
+*.db
+aetheris-raw.db
+mlflow.db
+mlruns/
+
+# Secrets — never commit (constitution: Secrets)
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
