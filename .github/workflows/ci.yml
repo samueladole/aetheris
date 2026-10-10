@@ -47,3 +47,56 @@ jobs:
       # so free-tier quota is never consumed in CI.
       - name: Tests
         run: .venv/bin/pytest tests/
+
+  # Documentation site (feature 001-docs-site-cicd).
+  # Separate job: it needs the `docs` extra plus Node tooling, and a failure
+  # here must not be confused with a pipeline-code failure.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Create virtualenv
+        run: uv venv --python 3.11 .venv
+
+      - name: Install project with docs extra
+        run: uv pip install --python .venv/bin/python -e ".[dev,docs]"
+
+      - name: Install Node accessibility tooling
+        run: npm ci --ignore-scripts || npm install --ignore-scripts
+
+      # FR-006 / VR-1: fails when any public entity lacks a docstring. This is
+      # the real enforcement; mkdocstrings' show_if_no_docstring is only a
+      # safety net that would *hide* undocumented entities instead.
+      - name: Docstring gate (FR-006)
+        run: |
+          .venv/bin/ruff check \
+            --select D100,D101,D102,D103,D104,D105,D106,D107 src
+
+      - name: Build documentation site
+        run: .venv/bin/mkdocs build --strict
+
+      # VR-5 / FR-017: the site is publicly readable, so a credential in the
+      # output is a security exposure, not a cosmetic defect.
+      - name: Secret scan of built site
+        run: .venv/bin/python scripts/scan_secrets.py site/
+
+      # VR-4 / FR-019 / FR-020: two gates, static and rendered.
+      - name: Accessibility gate — structural
+        run: npx html-validate "site/**/*.html" --formatter stylish
+
+      - name: Accessibility gate — rendered
+        run: .venv/bin/python scripts/check_a11y_rendered.py site/

@@ -1,0 +1,23 @@
+/* Aetheris documentation palette (feature 001-docs-site-cicd).
+ *
+ * Contrast ratios recorded here must satisfy WCAG 2.1 AA (SC 1.4.3), which
+ * requires 4.5:1 for normal text and 3:1 for large text. The rendered
+ * accessibility gate (scripts/check_a11y_rendered.py) computes these on the
+ * built pages, so these values are the source the thresholds are checked
+ * against — see T032.
+ */
+
+:root {
+  /* Body text on the default surface: >= 4.5:1 */
+  --aetheris-text-primary: #1a1a1a;   /* on #ffffff -> ~16.1:1 */
+  --aetheris-text-secondary: #4a4a4a; /* on #ffffff ->  ~9.7:1 */
+
+  /* Accent used for links — must clear 4.5:1 on white */
+  --aetheris-accent: #1565c0;         /* on #ffffff ->  ~5.2:1 */
+}
+
+[data-md-color-scheme="slate"] {
+  --aetheris-text-primary: #e8e8e8;   /* on #121212 -> ~15.1:1 */
+  --aetheris-text-secondary: #b8b8b8; /* on #121212 ->  ~9.0:1 */
+  --aetheris-accent: #64b5f6;         /* on #121212 ->  ~8.6:1 */
+}

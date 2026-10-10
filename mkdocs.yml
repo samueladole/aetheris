@@ -1,0 +1,100 @@
+# Aetheris documentation site (feature 001-docs-site-cicd)
+#
+# Stack and license rationale: .specify/specs/001-docs-site-cicd/research.md
+#   mkdocs                BSD-2-Clause
+#   mkdocs-material       MIT
+#   mkdocstrings          ISC
+#   mkdocs-gen-files      MIT
+#   mkdocs-literate-nav   MIT
+#   mkdocs-section-index  MIT
+#
+# The API reference is GENERATED, never hand-edited: reference/*.md is written
+# by scripts/gen_api.py and is git-ignored (VR-3).
+
+site_name: Aetheris
+site_description: >-
+  Financial Intelligence Knowledge Graph & Sentiment Analysis Engine.
+site_url: https://samueladole.github.io/aetheris/
+repo_url: https://github.com/samueladole/aetheris
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  extra_css:
+    - stylesheets/extra.css
+
+# Any mkdocs or plugin warning fails the build (FR-010 gate).
+strict: true
+
+plugins:
+  - search
+  # Walks src/ and writes docs/reference/*.md + SUMMARY.md.
+  - gen-files:
+      scripts:
+        - scripts/gen_api.py
+  # Reads the generated SUMMARY.md as the nav.
+  - literate-nav
+  # Collapsible section index for the CLI reference.
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          # The importable package root is literally `src`.
+          paths:
+            - src
+          options:
+            docstring_style: google
+            show_source: false
+            show_signature_annotations: true
+            show_bases: true
+            # Never render an undocumented entity. This is a safety net, not
+            # the enforcement mechanism — the ruff D-rule gate (T007) is what
+            # actually fails the build on a missing docstring (FR-006).
+            show_if_no_docstring: false
+            # Exclude private, protected, and dunder names by convention
+            # rather than a per-module allowlist (FR-008).
+            filters:
+              - "!^_"
+            members_order: source
+            show_submodules: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            separate_signature: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+# Nav is NOT declared here. scripts/gen_api.py writes a root SUMMARY.md that
+# `literate-nav` consumes as the entire navigation, so adding a module adds its
+# nav entry automatically (FR-004). Declaring it here as well would be a second
+# source of truth that silently drifts.

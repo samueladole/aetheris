@@ -41,6 +41,26 @@ dev = [
     "import-linter>=2.0",
 ]
 
+# Documentation site (feature 001-docs-site-cicd).
+# Licenses verified against each project's own LICENSE file — see
+# .specify/specs/001-docs-site-cicd/research.md.
+#   mkdocs                 BSD-2-Clause
+#   mkdocs-material        MIT
+#   mkdocstrings           ISC   (via the [python] extra)
+#   mkdocs-gen-files       MIT
+#   mkdocs-literate-nav    MIT
+#   mkdocs-section-index   MIT
+# Note: mkdocs-gen-files is pinned below 0.6 because 0.6.x depends on
+# `properdocs` and pins mkdocs<=1.6.1; 0.5.x avoids both.
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+    "mkdocs-gen-files>=0.5,<0.6",
+    "mkdocs-literate-nav>=0.6",
+    "mkdocs-section-index>=0.3",
+]
+
 [project.scripts]
 aetheris = "src.cli.main:main"
 
@@ -70,7 +90,19 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "D"]
+# Docstring gate for the documentation site (feature 001-docs-site-cicd, FR-006).
+# The D1xx rules are public-only — they skip underscore-prefixed names, matching
+# mkdocstrings' `filters: ["!^_"]` exactly. Run as:
+#   ruff check --select D100,D101,D102,D103,D104,D105,D106,D107 src
+ignore = [
+    # Conflicts resolved explicitly rather than left to chance.
+    "D203",  # incompatible with D211 (one-blank-line-before-class)
+    "D213",  # incompatible with D212 (multi-line-summary-first-line)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 # --- mypy ------------------------------------------------------------------
 [tool.mypy]

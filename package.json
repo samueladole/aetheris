@@ -1,0 +1,28 @@
+# Aetheris documentation site — Node tooling (feature 001-docs-site-cicd)
+#
+# Both accessibility gates are permissively licensed and hermetic:
+#   html-validate      MIT          — structural rules over static HTML
+#   @playwright/test   Apache-2.0   — browser driver for the rendered checker
+#
+# `axe-core` is deliberately NOT used: it is MPL-2.0, which the project
+# constitution forbids. See .specify/specs/001-docs-site-cicd/research.md §C.
+
+{
+  "name": "aetheris-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation tooling for Aetheris (not published)",
+  "scripts": {
+    "a11y:static": "html-validate \"site/**/*.html\" --formatter stylish",
+    "a11y:rendered": "python scripts/check_a11y_rendered.py site/",
+    "a11y": "npm run a11y:static && npm run a11y:rendered"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "html-validate": "^8.0.0"
+  },
+  "comments": {
+    "private": "Never published to npm — this exists only to pin the docs toolchain.",
+    "hermetic": "Neither gate requires network access at run time; Playwright's browser must be installed once via `npx playwright install chromium`."
+  }
+}

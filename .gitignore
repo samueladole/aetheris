@@ -90,3 +90,14 @@ desktop.ini
 *.log
 logs/
 npm-debug.log*
+
+# Node — docs tooling (feature 001-docs-site-cicd)
+node_modules/
+package-lock.json
+.playwright-artifacts/
+
+# Documentation build output & generated reference (VR-3)
+site/
+docs/SUMMARY.md
+docs/reference/
+docs/validation.md

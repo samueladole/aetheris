@@ -64,6 +64,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
 
+    # -- docs (T009) ---------------------------------------------------
+    doc = sub.add_parser(
+        "docs", parents=[parent], help="Build, serve, or open the documentation site"
+    )
+    doc.add_argument(
+        "action",
+        choices=["build", "serve", "open"],
+        help="build: run gates and emit site/; serve: preview; open: print the preview URL",
+    )
+    doc.add_argument(
+        "--host", default="127.0.0.1", help="Preview bind host (localhost only)"
+    )
+    doc.add_argument("--port", type=int, default=8000, help="Preview port")
+    doc.add_argument(
+        "--no-gates",
+        action="store_true",
+        help="Skip the gates (development convenience; never usable in CI)",
+    )
+
     # -- ingest (T039) -------------------------------------------------
     ing = sub.add_parser(
         "ingest", parents=[parent], help="Run a single ingestion adapter"
@@ -142,6 +161,139 @@ def _cmd_check_licenses(args: argparse.Namespace) -> int:
     else:
         print(licenses.format_report(report))
     return EXIT_OK if report.passed else EXIT_LICENSE
+
+
+# --- Gates (contracts/docs-build.md) ----------------------------------------
+# Invoked through the active interpreter so the gate works whether or not
+# .venv/bin is on PATH.
+_DOCSTRING_GATE = [
+    sys.executable,
+    "-m",
+    "ruff",
+    "check",
+    "--select",
+    "D100,D101,D102,D103,D104,D105,D106,D107",
+    "src",
+]
+
+# AEN-001: shipped by the docs extra. `mkdocs` is the CLI entrypoint.
+# Invoked through the active interpreter, not the console script, so the CLI
+# works regardless of whether .venv/bin is on PATH.
+_MKDOCS_BUILD = [sys.executable, "-m", "mkdocs", "build", "--strict"]
+
+# Credential-shaped strings. The site is publicly readable (FR-017), so a match
+# is a security exposure requiring rotation, not a cosmetic defect.
+_SECRET_PATTERNS = [
+    r'(?i)(api[_-]?key|apikey|token|secret|password|passwd|credential)\s*[:=]\s*["\'][A-Za-z0-9_\-]{12,}["\']',
+    r'\bsk-[A-Za-z0-9]{20,}\b',
+    r'\bghp_[A-Za-z0-9]{30,}\b',
+    r'\bAKIA[0-9A-Z]{16}\b',
+    r'\bxox[baprs]-[A-Za-z0-9-]{10,}\b',
+]
+
+
+def _run_gate(argv: list[str], *, name: str) -> tuple[bool, str]:
+    """Run one gate, returning (passed, output). Never raises."""
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, timeout=300
+        )
+    except FileNotFoundError:
+        return False, f"{name}: command not found: {argv[0]}"
+    except subprocess.TimeoutExpired:
+        return False, f"{name}: timed out after 300s"
+
+    if proc.returncode == 0:
+        return True, ""
+
+    detail = (proc.stdout or "") + (proc.stderr or "")
+    return False, f"{name} failed (exit {proc.returncode}):\n{detail[:4000]}"
+
+
+def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris docs build|serve|open` (T009)."""
+    from pathlib import Path
+
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            f"error: --host {args.host!r} is refused. The preview server binds to "
+            "localhost only and must never be exposed as a network service.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    if args.action == "open":
+        print(f"http://{args.host}:{args.port}")
+        return EXIT_OK
+
+    if args.action == "serve":
+        import subprocess
+
+        # Invoke mkdocs through the active interpreter: a bare `mkdocs` relies
+        # on .venv/bin being on PATH, which it is not when the CLI is installed
+        # as a console script.
+        cmd = [
+            sys.executable,
+            "-m",
+            "mkdocs",
+            "serve",
+            "-a",
+            f"{args.host}:{args.port}",
+        ]
+        try:
+            return subprocess.call(cmd)
+        except FileNotFoundError:
+            print(
+                "error: mkdocs not installed; run `pip install -e \".[docs]\"`",
+                file=sys.stderr,
+            )
+            return EXIT_RUNTIME
+
+    # --- build ---------------------------------------------------------
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            f"error: --host {args.host!r} is refused. The preview server binds to "
+            "localhost only and must never be exposed as a network service.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    if not Path("mkdocs.yml").is_file():
+        print("error: mkdocs.yml not found — run from the repository root",
+              file=sys.stderr)
+        return EXIT_USAGE
+
+    if not args.no_gates:
+        for argv, name in [
+            (_DOCSTRING_GATE, "docstring gate (FR-006)"),
+            (_MKDOCS_BUILD, "site build (FR-010)"),
+        ]:
+            ok, detail = _run_gate(argv, name=name)
+            if not ok:
+                print(f"error: {detail}", file=sys.stderr)
+                return EXIT_LICENSE
+    else:
+        print("warning: --no-gates skips the docstring and build gates",
+              file=sys.stderr)
+
+    # The a11y gates run over the built site, so they need the build first.
+    site = Path("site")
+    if not args.no_gates and site.is_dir():
+        for argv, name in [
+            (["npx", "html-validate", "site/**/*.html", "--formatter", "stylish"],
+             "accessibility gate — structural (FR-019)"),
+            (["python", "scripts/check_a11y_rendered.py", "site/"],
+             "accessibility gate — rendered (FR-019)"),
+        ]:
+            ok, detail = _run_gate(argv, name=name)
+            if not ok:
+                print(f"error: {detail}", file=sys.stderr)
+                return EXIT_LICENSE
+
+    print(f"Documentation built into {site}/")
+    return EXIT_OK
 
 
 def _parse_params(pairs: list[str]) -> dict[str, str]:
@@ -414,6 +566,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_run(args, settings)
         if args.command == "ingest":
             return _cmd_ingest(args, settings)
+        if args.command == "docs":
+            return _cmd_docs(args, settings)
         if args.command == "status":
             return _cmd_status(args, settings)
         if args.command == "version":

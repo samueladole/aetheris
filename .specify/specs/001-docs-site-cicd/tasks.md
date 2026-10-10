@@ -27,10 +27,10 @@ no checker, which is the failure mode observed during research in a rejected alt
 
 **Purpose**: Project initialization and tooling for the documentation feature.
 
-- [ ] T001 [P] Add a `docs` optional-dependency group to `pyproject.toml` pinning `mkdocs`, `mkdocs-material`, `mkdocstrings[python]`, `mkdocs-gen-files`, `mkdocs-literate-nav`, and `mkdocs-section-index`, with a comment recording each package's verified license (BSD-2-Clause / MIT / ISC)
-- [ ] T002 [P] Create the documentation source tree at the repository root: `docs/index.md`, `docs/installation.md`, `docs/usage/cli.md`, `docs/stylesheets/extra.css`, and `docs/overrides/`, leaving `docs/reference/` to be generated
-- [ ] T003 [P] Create `package.json` at the repository root declaring `html-validate` and `@playwright/test` as devDependencies, each with a comment recording its verified license (MIT / Apache-2.0), plus npm scripts `a11y:static` and `a11y:rendered`
-- [ ] T004 [P] Add `site/`, `docs/reference/*.md`, and `.playwright-artifacts/` to `.gitignore`, with a comment noting that generated reference pages are build output, never committed (VR-3)
+- [X] T001 [P] Add a `docs` optional-dependency group to `pyproject.toml` pinning `mkdocs`, `mkdocs-material`, `mkdocstrings[python]`, `mkdocs-gen-files`, `mkdocs-literate-nav`, and `mkdocs-section-index`, with a comment recording each package's verified license (BSD-2-Clause / MIT / ISC)
+- [X] T002 [P] Create the documentation source tree at the repository root: `docs/index.md`, `docs/installation.md`, `docs/usage/cli.md`, `docs/stylesheets/extra.css`, and `docs/overrides/`, leaving `docs/reference/` to be generated
+- [X] T003 [P] Create `package.json` at the repository root declaring `html-validate` and `@playwright/test` as devDependencies, each with a comment recording its verified license (MIT / Apache-2.0), plus npm scripts `a11y:static` and `a11y:rendered`
+- [X] T004 [P] Add `site/`, `docs/reference/*.md`, and `.playwright-artifacts/` to `.gitignore`, with a comment noting that generated reference pages are build output, never committed (VR-3)
 
 **Checkpoint**: Tooling is installable via `pip install -e ".[docs]"` and `npm install`.
 
@@ -42,11 +42,11 @@ no checker, which is the failure mode observed during research in a rejected alt
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Implement the API reference generator in `scripts/gen_api.py`: walk `src/**/*.py`, skip `__pycache__` and `__init__.py`, derive the dotted module path relative to `src/`, emit one `docs/reference/<path>.md` containing a single `::: <module>` directive, and append each page to a generated `docs/reference/SUMMARY.md` for `literate-nav` (FR-004, FR-009)
-- [ ] T006 Create `mkdocs.yml` at the repository root with `site_name`, `site_url` set to the repository's Pages URL, `theme: material`, and plugins `search`, `gen-files` (scripts `[scripts/gen_api.py]`), `literate-nav`, `section-index`, and `mkdocstrings` with `paths: [src]`, `docstring_style: google`, `show_source: false`, `show_if_no_docstring: false`, `filters: ["!^_"]`, and `strict: true`
-- [ ] T007 [P] Configure the docstring gate in `pyproject.toml` by adding `"D"` to `[tool.ruff.lint] select` and a `[tool.ruff.lint.pydocstyle]` section with `convention = "google"`, so `ruff check --select D100,D101,D102,D103,D104,D105,D106,D107 src` fails on any undocumented public entity (FR-006, VR-1)
-- [ ] T008 [P] Extend `.github/workflows/ci.yml` with a `docs` job that installs the `docs` extra, runs `ruff check --select D100,D101,D102,D103,D104,D105,D106,D107 src`, runs `mkdocs build --strict`, and runs `npx html-validate "site/**/*.html"` (FR-010)
-- [ ] T009 Implement the `aetheris docs build`, `aetheris docs serve`, and `aetheris docs open` subcommands in `src/cli/main.py` per `contracts/docs-build.md`, wiring the four gates in order (docstrings → secret scan → build → accessibility) and exiting `3` on any gate failure, with `serve` binding to localhost only
+- [X] T005 Implement the API reference generator in `scripts/gen_api.py`: walk `src/**/*.py`, skip `__pycache__` and `__init__.py`, derive the dotted module path relative to `src/`, emit one `docs/reference/<path>.md` containing a single `::: <module>` directive, and append each page to a generated `docs/reference/SUMMARY.md` for `literate-nav` (FR-004, FR-009)
+- [X] T006 Create `mkdocs.yml` at the repository root with `site_name`, `site_url` set to the repository's Pages URL, `theme: material`, and plugins `search`, `gen-files` (scripts `[scripts/gen_api.py]`), `literate-nav`, `section-index`, and `mkdocstrings` with `paths: [src]`, `docstring_style: google`, `show_source: false`, `show_if_no_docstring: false`, `filters: ["!^_"]`, and `strict: true`
+- [X] T007 [P] Configure the docstring gate in `pyproject.toml` by adding `"D"` to `[tool.ruff.lint] select` and a `[tool.ruff.lint.pydocstyle]` section with `convention = "google"`, so `ruff check --select D100,D101,D102,D103,D104,D105,D106,D107 src` fails on any undocumented public entity (FR-006, VR-1)
+- [X] T008 [P] Extend `.github/workflows/ci.yml` with a `docs` job that installs the `docs` extra, runs `ruff check --select D100,D101,D102,D103,D104,D105,D106,D107 src`, runs `mkdocs build --strict`, and runs `npx html-validate "site/**/*.html"` (FR-010)
+- [X] T009 Implement the `aetheris docs build`, `aetheris docs serve`, and `aetheris docs open` subcommands in `src/cli/main.py` per `contracts/docs-build.md`, wiring the four gates in order (docstrings → secret scan → build → accessibility) and exiting `3` on any gate failure, with `serve` binding to localhost only
 
 **Checkpoint**: `aetheris docs build` runs all four gates and produces `site/`.
 
