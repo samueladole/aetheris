@@ -9,6 +9,7 @@ T024, T039, T051, T064, and T073 — each task adds its subcommand here.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -195,8 +196,6 @@ _SECRET_PATTERNS = [
 
 def _run_gate(argv: list[str], *, name: str) -> tuple[bool, str]:
     """Run one gate, returning (passed, output). Never raises."""
-    import subprocess
-
     try:
         proc = subprocess.run(
             argv, capture_output=True, text=True, timeout=300
@@ -230,8 +229,6 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
         return EXIT_OK
 
     if args.action == "serve":
-        import subprocess
-
         # Invoke mkdocs through the active interpreter: a bare `mkdocs` relies
         # on .venv/bin being on PATH, which it is not when the CLI is installed
         # as a console script.

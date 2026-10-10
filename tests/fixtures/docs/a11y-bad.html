@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aetheris accessibility fixture — deliberately broken</title>
+</head>
+<body>
+  <!--
+    PERMANENT FIXTURE — do not "fix" this file.
+
+    Every defect below is intentional. This page exists to prove that the
+    documentation accessibility gates FAIL CLOSED: both
+    `npx html-validate` and `python scripts/check_a11y_rendered.py`
+    must exit non-zero on it.
+
+    A checker that reports success on this page is broken, and a broken
+    checker is worse than no checker. That exact failure mode — reporting
+    "1 of 1 passed" with exit code 0 on a page of violations — was observed
+    during research in a permissively-licensed alternative, which is why it
+    was rejected. See .specify/specs/001-docs-site-cicd/research.md §C.
+
+    Referenced by tests/contract/test_a11y_gates.py.
+
+    NOTE ON COVERAGE: only some of these defects are caught by the static
+    gate. The skipped heading levels and the low-contrast text are present
+    because the RENDERED Playwright checker must catch them — the static
+    gate structurally cannot. That asymmetry is the reason both gates exist.
+  -->
+
+  <!-- Defect 1: heading levels skipped (h1 -> h4, no h2 or h3).
+       Caught by the rendered checker; html-validate's heading-order rule is
+       not part of the enabled ruleset, so the static gate misses this. -->
+  <h1>Accessibility fixture</h1>
+  <h4>A heading four levels below the last, with no h2 or h3 between</h4>
+
+  <!-- Defect 2: no alt attribute. Rule: wcag/h37 (ENFORCED by static gate). -->
+  <img src="chart.png" width="400" height="200">
+
+  <!-- Defect 3: interactive control with no discernible text.
+       Rules: no-implicit-button-type + accessible-name checks. -->
+  <button></button>
+
+  <!-- Defect 4: insufficient colour contrast (light grey on white).
+       NOT detectable by html-validate — this is what the rendered Playwright
+       checker exists to catch. -->
+  <div style="color:#c8c8c8;background:#ffffff">
+    Low-contrast text that is unreadable for many users.
+  </div>
+
+  <!-- Defect 5: duplicate landmark labels, the same defect Material itself
+       ships. Rule: unique-landmark (ENFORCED by static gate). -->
+  <nav aria-label="Search">
+    <form action="/search" method="get">
+      <input type="search" name="q">
+    </form>
+  </nav>
+  <nav aria-label="Search">
+    <p>A second, indistinguishable Search landmark.</p>
+  </nav>
+</body>
+</html>

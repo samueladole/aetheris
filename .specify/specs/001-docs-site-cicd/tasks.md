@@ -63,8 +63,8 @@ for `graph.repository`, and confirm it renders with signatures, parameters, and 
 
 ### Tests for User Story 1 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T010 [P] [US1] Write the deliberately-inaccessible fixture at `tests/fixtures/docs/a11y-bad.html` containing missing alt text, skipped heading levels, an unlabelled input, and low-contrast text, plus a pytest test in `tests/contract/test_a11y_gates.py` asserting that `html-validate` exits non-zero on it and that `scripts/check_a11y_rendered.py` exits non-zero on it (VR-4)
-- [ ] T011 [P] [US1] Write the fail-closed regression test in `tests/contract/test_a11y_gates.py` asserting that a checker that cannot execute must not report success, guarding against the fail-open behaviour documented in `research.md` §C
+- [X] T010 [P] [US1] Write the deliberately-inaccessible fixture at `tests/fixtures/docs/a11y-bad.html` containing missing alt text, skipped heading levels, an unlabelled input, and low-contrast text, plus a pytest test in `tests/contract/test_a11y_gates.py` asserting that `html-validate` exits non-zero on it and that `scripts/check_a11y_rendered.py` exits non-zero on it (VR-4)
+- [X] T011 [P] [US1] Write the fail-closed regression test in `tests/contract/test_a11y_gates.py` asserting that a checker that cannot execute must not report success, guarding against the fail-open behaviour documented in `research.md` §C
 
 ### Implementation for User Story 1
 
