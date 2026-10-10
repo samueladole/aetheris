@@ -41,6 +41,7 @@ behaviour, expect that check to fail until you update the README.
 - [Performance targets](#performance-targets)
 - [Constitution](#constitution)
 - [Provider terms & legal boundaries](#provider-terms--legal-boundaries)
+- [Design documents](#design-documents)
 - [Development](#development)
 - [Verification](#verification)
 - [Open decisions](#open-decisions)
@@ -410,6 +411,54 @@ explicitly forbid redistribution on free tiers:
 
 **Do not ship redistributed derived data without written confirmation from these
 providers.** FRED additionally requires a visible attribution string.
+
+---
+
+## Design documents
+
+Everything that explains *why* the code is shaped this way lives in
+`.specify/`, not in this README. The pipeline is built specification-first:
+the artefacts are generated from each other in order, and the code follows the
+tasks.
+
+```
+spec.md ──▶ clarify ──▶ plan.md ──▶ tasks.md ──▶ implement
+```
+
+### Project-wide
+
+| Document | What it holds |
+|---|---|
+| [`constitution.md`](.specify/memory/constitution.md) | The five non-negotiable principles |
+| [`constitution-amendments.md`](.specify/memory/constitution-amendments.md) | Accepted deviations, and decisions recorded so they are not re-litigated |
+| [`spec.md`](.specify/specs/spec.md) | Requirements FR-001…FR-021, success criteria, provider registry |
+| [`plan.md`](.specify/specs/plan.md) | Architecture, technical context, constitution gates |
+| [`research.md`](.specify/specs/research.md) | Licence-verified tooling decisions |
+| [`data-model.md`](.specify/specs/data-model.md) | Entities, identity keys, validation rules VR-1…VR-9 |
+| [`tasks.md`](.specify/specs/tasks.md) | 81 tasks traceable to FR IDs |
+| [`quickstart.md`](.specify/specs/quickstart.md) | End-to-end validation guide |
+| [`contracts/`](.specify/specs/contracts/) | graph-api, cli, sentiment-schema, adapter-protocol |
+
+### Per-feature
+
+Each feature gets its own directory under
+[`.specify/specs/`](.specify/specs/) with the same artefact chain:
+
+| Feature | Focus |
+|---|---|
+| [`001-docs-site-cicd/`](.specify/specs/001-docs-site-cicd/) | Documentation site and CI/CD |
+
+### Two things worth knowing before you read them
+
+1. **The duplicate constitution is unresolved.** Both
+   `.specify/memory/constitution.md` and `.specify/specs/constitution.md` are
+   tracked, and they have drifted. The `memory/` copy is authoritative — the
+   one Spec Kit commands read. The other is a leftover tracked before the
+   convention was settled (see [Open decisions](#open-decisions)).
+2. **`spec.md` has no user stories.** It is organised by milestones and an FR
+   register, so the five user stories in `tasks.md` are *derived* from those,
+   not written in the spec. The mapping is documented in
+   [`tasks.md`](.specify/specs/tasks.md).
 
 ---
 

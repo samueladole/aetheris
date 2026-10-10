@@ -55,7 +55,42 @@ CHECKS: list[dict[str, object]] = [
         "actual": lambda: _reference_pages(),
         "hint": "Count modules gen_api.py would document (src/**/*.py minus __init__).",
     },
+    {
+        "name": "requirement ids",
+        "pattern": r"FR-001…FR-(\d+)",
+        "actual": lambda: _requirement_ids(),
+        "numeric": True,
+        "hint": "Count distinct FR- ids in .specify/specs/spec.md.",
+    },
 ]
+
+
+def _requirement_ids() -> int:
+    """Highest FR- id declared in the pipeline spec."""
+    text = (REPO / ".specify" / "specs" / "spec.md").read_text()
+    ids = {int(m) for m in re.findall(r"FR-(\d+)", text)}
+    if not ids:
+        raise SyncError("no FR- ids found in .specify/specs/spec.md")
+    return max(ids)
+
+
+def _anchors(readme: str) -> set[str]:
+    """GitHub-style anchors for every heading in the README."""
+    anchors: set[str] = set()
+    for line in readme.splitlines():
+        m = re.match(r"^(#{1,6})\s+(.*)", line)
+        if not m:
+            continue
+        anchor = re.sub(r"[^\w\s-]", "", m.group(2)).strip().lower()
+        anchors.add(anchor.replace(" ", "-"))
+    return anchors
+
+
+def _broken_anchors(readme: str) -> list[str]:
+    """Internal links whose target heading does not exist."""
+    anchors = _anchors(readme)
+    used = re.findall(r"\]\(#([a-z0-9-]+)\)", readme)
+    return sorted({target for target in used if target not in anchors})
 
 
 class SyncError(RuntimeError):
@@ -168,7 +203,13 @@ def main() -> int:
             continue
         documented = found.group(1)
         actual = check["actual"]()  # type: ignore[operator]
-        if str(actual) != str(documented):
+        # Zero-padded ids like FR-021 must compare numerically, so "021" is not
+        # reported as disagreeing with 21.
+        if check.get("numeric"):
+            same = documented.isdigit() and int(documented) == int(actual)
+        else:
+            same = str(actual) == str(documented)
+        if not same:
             failures.append(
                 f"[{name}] README says {documented!r} but the repository says "
                 f"{actual!r}. {check['hint']}"
@@ -177,6 +218,11 @@ def main() -> int:
     missing = _missing_paths(readme)
     for rel in missing:
         failures.append(f"[missing path] the README references `{rel}`, which does not exist")
+
+    for target in _broken_anchors(readme):
+        failures.append(
+            f"[broken anchor] the README links to #{target}, which is not a heading"
+        )
 
     if failures:
         print("README is out of sync with the repository:")
