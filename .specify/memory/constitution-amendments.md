@@ -73,6 +73,29 @@ quietly accept the violation.
 
 ---
 
+## Non-amendments (recorded so they are not re-litigated)
+
+### The docs-site accessibility gate (feature `001-docs-site-cicd`) — **no amendment needed**
+
+A conflict arose during planning: spec FR-019/020 and SC-007 require WCAG 2.1 Level AA
+verified by automated checks, but the only mature engine with complete AA coverage,
+`axe-core`, is **MPL-2.0** and therefore forbidden by Principle I.
+
+**Decision (2026-10-10):** Principle I is **unchanged**. AA coverage is assembled from two
+permissively-licensed parts — `html-validate` (MIT) for structural rules, plus a bespoke
+**Playwright** checker (Apache-2.0) for computed colour contrast and keyboard focus.
+
+**Why this is recorded here:** the options considered included amending Principle I to
+permit MPL-2.0 for `axe-core`. That was rejected, so Principle I remains exactly as
+ratified. If a future contributor proposes `axe-core` on the grounds that "we needed it for
+accessibility", this entry is the counter-evidence: AA is achievable without it.
+
+**Accepted trade-off:** bespoke rules cover fewer cases than axe's ~90. Mitigated by a
+deliberately-bad fixture page that must fail every gate, and an explicit list of covered
+rule ids so coverage is auditable rather than assumed.
+
+---
+
 ## A-002 — Remove the retired duplicate constitution reference
 
 Not a Principle change; a housekeeping amendment.
