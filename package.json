@@ -7,7 +7,7 @@
     "a11y:static": "html-validate \"site/**/*.html\" --formatter stylish",
     "a11y:rendered": "node scripts/check_a11y_rendered.js site/",
     "a11y": "npm run a11y:static && npm run a11y:rendered",
-    "docs:landmarks": "node scripts/fix_landmark_labels.js site/"
+    "docs:html": "node scripts/fix_built_html.js site/"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

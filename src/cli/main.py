@@ -183,16 +183,6 @@ _DOCSTRING_GATE = [
 # works regardless of whether .venv/bin is on PATH.
 _MKDOCS_BUILD = [sys.executable, "-m", "mkdocs", "build", "--strict"]
 
-# Credential-shaped strings. The site is publicly readable (FR-017), so a match
-# is a security exposure requiring rotation, not a cosmetic defect.
-_SECRET_PATTERNS = [
-    r'(?i)(api[_-]?key|apikey|token|secret|password|passwd|credential)\s*[:=]\s*["\'][A-Za-z0-9_\-]{12,}["\']',
-    r'\bsk-[A-Za-z0-9]{20,}\b',
-    r'\bghp_[A-Za-z0-9]{30,}\b',
-    r'\bAKIA[0-9A-Z]{16}\b',
-    r'\bxox[baprs]-[A-Za-z0-9-]{10,}\b',
-]
-
 
 def _run_gate(argv: list[str], *, name: str) -> tuple[bool, str]:
     """Run one gate, returning (passed, output). Never raises."""
@@ -283,10 +273,22 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
             print(f"error: {detail}", file=sys.stderr)
             return EXIT_LICENSE
 
-    # Material emits duplicate landmark aria-labels. Disambiguate them before
-    # the structural gate so it judges content rather than theme noise.
+        # VR-5 / FR-017: the published site is publicly readable, so a
+        # credential in the output is a security exposure, not a cosmetic
+        # defect. Runs on the built site, because build steps can introduce
+        # values that are not visible in any single source file.
+        ok, detail = _run_gate(
+            [sys.executable, "scripts/scan_secrets.py", "site/"],
+            name="secret scan (FR-017)",
+        )
+        if not ok:
+            print(f"error: {detail}", file=sys.stderr)
+            return EXIT_LICENSE
+
+    # Repair defects the theme and generator introduce in the built HTML
+    # before the structural gate judges it.
     ok, detail = _run_gate(
-        [sys.executable, "scripts/fix_landmark_labels.py", "site/"],
+        ["node", "scripts/fix_built_html.js", "site/"],
         name="landmark label fix",
     )
     if not ok:
