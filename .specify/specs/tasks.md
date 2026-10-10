@@ -50,10 +50,10 @@ here is the spec's order, not an independent prioritisation.
 
 **Purpose**: Project initialization and basic structure — corresponds to Milestone 1.
 
-- [ ] T001 [P] Create the directory skeleton per plan.md "Project Structure": `src/{config,orchestration,ingestion,sentiment,graph,observability,cli}/__init__.py`, `tests/{unit,contract,integration}/`, `tests/fixtures/{cassettes,models}/`, and `.gitignore`
-- [ ] T002 [P] Create packaging and pinned dev-dependency manifest in `pyproject.toml` including `dbos-transact`, `duckdb`, `transformers`, `torch`, `safetensors`, `opentelemetry-sdk`, `prometheus-client`, `mlflow`, `evidently`, `pytest`, `vcrpy`, `ruff`, `mypy`, `import-linter`
-- [ ] T003 [P] Configure pytest in `pyproject.toml` `[tool.pytest.ini_options]` and CI in `.github/workflows/ci.yml` running `pytest`, `lint-imports`, and `aetheris check-licenses --strict`
-- [ ] T004 [P] Add an empty import-linter config in `.importlinter` at repo root (layer contracts are filled in by T013)
+- [X] T001 [P] Create the directory skeleton per plan.md "Project Structure": `src/{config,orchestration,ingestion,sentiment,graph,observability,cli}/__init__.py`, `tests/{unit,contract,integration}/`, `tests/fixtures/{cassettes,models}/`, and `.gitignore`
+- [X] T002 [P] Create packaging and pinned dev-dependency manifest in `pyproject.toml` including `dbos-transact`, `duckdb`, `transformers`, `torch`, `safetensors`, `opentelemetry-sdk`, `prometheus-client`, `mlflow`, `evidently`, `pytest`, `vcrpy`, `ruff`, `mypy`, `import-linter`
+- [X] T003 [P] Configure pytest in `pyproject.toml` `[tool.pytest.ini_options]` and CI in `.github/workflows/ci.yml` running `pytest`, `lint-imports`, and `aetheris check-licenses --strict`
+- [X] T004 [P] Add an empty import-linter config in `.importlinter` at repo root (layer contracts are filled in by T013)
 
 **Checkpoint**: Repository scaffold exists; `pytest --collect-only` runs cleanly.
 
@@ -65,17 +65,17 @@ here is the spec's order, not an independent prioritisation.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 [P] Implement typed settings loader in `src/config/settings.py` reading values from environment variables only, with no secret ever written to a file (constitution "Secrets")
-- [ ] T006 [P] Implement the provider registry data loader in `src/config/providers.py` holding the spec §3.2.1 table (provider → module → endpoints → free-tier limit → fallback order) as data, not code
-- [ ] T007 [P] Implement OpenTelemetry tracer, meter, and logger initialisation in `src/observability/telemetry.py` with an OTLP exporter and a no-op fallback when no collector is reachable
-- [ ] T008 [P] Implement pipeline metric definitions in `src/observability/metrics.py`: latency histogram, fetch and error counters, cache hit/miss counters, and queue-depth gauge
-- [ ] T009 [P] Implement the immutable raw payload store in `src/ingestion/payloads.py` as append-only SQLite with `payload_id = "${provider}:${endpoint}:${request_hash}:${fetched_at}"` and a `schema_version` column (FR-015, VR-8)
-- [ ] T010 [P] Implement the shared TTL cache in `src/ingestion/cache.py` backed by SQLite with per-endpoint TTL values read from the registry (FR-007)
-- [ ] T011 [P] Implement the thread-safe in-process token bucket in `src/ingestion/ratelimit.py`, configured from registry limits and shared across worker threads (FR-008)
-- [ ] T012 [P] Implement the DuckDB node/edge DDL in `src/graph/schema.py` with primary keys from data-model.md §1–§2 and CHECK constraints enforcing VR-1 `SentimentMetric.score BETWEEN -1.0 AND 1.0`, VR-2 `confidence BETWEEN 0.0 AND 1.0`, VR-3 `Edge.weight BETWEEN -1.0 AND 1.0`, VR-4 `Edge.confidence BETWEEN 0.0 AND 1.0`, plus `asset_class` and `rel_type` enums
-- [ ] T013 [P] Define the import-linter layer contracts in `.importlinter` encoding every prohibition in `contracts/adapter-protocol.md` §Prohibited Dependencies (`ingestion` must not import `orchestration`, `sentiment`, or `graph`; `sentiment` must not import `graph`; `graph` must not import `ingestion`; `orchestration` may import all)
-- [ ] T014 Implement the CLI entrypoint skeleton in `src/cli/main.py` with the global flags `--config`, `--db`, `--raw`, `--json`, `--trace` and the exit codes `0` success, `1` runtime failure, `2` usage error, `3` license-gate failure
-- [ ] T015 [P] Implement the license manifest gate in `src/cli/licenses.py` enumerating the permitted set `{Apache-2.0, MIT, BSD-3-Clause, public-domain}` and rejecting anything else with exit code 3 (Principle I)
+- [X] T005 [P] Implement typed settings loader in `src/config/settings.py` reading values from environment variables only, with no secret ever written to a file (constitution "Secrets")
+- [X] T006 [P] Implement the provider registry data loader in `src/config/providers.py` holding the spec §3.2.1 table (provider → module → endpoints → free-tier limit → fallback order) as data, not code
+- [X] T007 [P] Implement OpenTelemetry tracer, meter, and logger initialisation in `src/observability/telemetry.py` with an OTLP exporter and a no-op fallback when no collector is reachable
+- [X] T008 [P] Implement pipeline metric definitions in `src/observability/metrics.py`: latency histogram, fetch and error counters, cache hit/miss counters, and queue-depth gauge
+- [X] T009 [P] Implement the immutable raw payload store in `src/ingestion/payloads.py` as append-only SQLite with `payload_id = "${provider}:${endpoint}:${request_hash}:${fetched_at}"` and a `schema_version` column (FR-015, VR-8)
+- [X] T010 [P] Implement the shared TTL cache in `src/ingestion/cache.py` backed by SQLite with per-endpoint TTL values read from the registry (FR-007)
+- [X] T011 [P] Implement the thread-safe in-process token bucket in `src/ingestion/ratelimit.py`, configured from registry limits and shared across worker threads (FR-008)
+- [X] T012 [P] Implement the DuckDB node/edge DDL in `src/graph/schema.py` with primary keys from data-model.md §1–§2 and CHECK constraints enforcing VR-1 `SentimentMetric.score BETWEEN -1.0 AND 1.0`, VR-2 `confidence BETWEEN 0.0 AND 1.0`, VR-3 `Edge.weight BETWEEN -1.0 AND 1.0`, VR-4 `Edge.confidence BETWEEN 0.0 AND 1.0`, plus `asset_class` and `rel_type` enums
+- [X] T013 [P] Define the import-linter layer contracts in `.importlinter` encoding every prohibition in `contracts/adapter-protocol.md` §Prohibited Dependencies (`ingestion` must not import `orchestration`, `sentiment`, or `graph`; `sentiment` must not import `graph`; `graph` must not import `ingestion`; `orchestration` may import all)
+- [X] T014 Implement the CLI entrypoint skeleton in `src/cli/main.py` with the global flags `--config`, `--db`, `--raw`, `--json`, `--trace` and the exit codes `0` success, `1` runtime failure, `2` usage error, `3` license-gate failure
+- [X] T015 [P] Implement the license manifest gate in `src/cli/licenses.py` enumerating the permitted set `{Apache-2.0, MIT, BSD-3-Clause, public-domain}` and rejecting anything else with exit code 3 (Principle I)
 
 **Checkpoint**: Foundation ready — all user story implementation can now begin.
 

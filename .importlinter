@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Aetheris layer boundary contracts — constitution Principle II.
+#
+# Each contract encodes a rule from
+# .specify/specs/contracts/adapter-protocol.md §Prohibited Dependencies.
+# A violation fails `lint-imports`, which is a required CI gate.
+# ---------------------------------------------------------------------------
+#
+# Dependency direction in Aetheris (plan.md "Structure Decision"):
+#
+#     cli -> orchestration -> {ingestion, sentiment} -> graph
+#                     \-------------> observability (leaf)
+#     config -> (nothing)
+#
+# `root_package = src` because the importable package is literally `src`.
+# ---------------------------------------------------------------------------
+
+[importlinter]
+root_package = src
+
+[importlinter:contract:ingestion-is-self-contained]
+name = Ingestion must not depend on orchestration, sentiment, or graph (adapter-protocol A2/A3)
+type = forbidden
+source_modules =
+    src.ingestion
+forbidden_modules =
+    src.orchestration
+    src.sentiment
+    src.graph
+
+[importlinter:contract:sentiment-must-not-write-the-graph]
+name = Sentiment must not import the graph or ingestion layers
+type = forbidden
+source_modules =
+    src.sentiment
+forbidden_modules =
+    src.graph
+    src.ingestion
+
+[importlinter:contract:graph-must-not-ingest]
+name = Graph must not import the ingestion or orchestration layers
+type = forbidden
+source_modules =
+    src.graph
+forbidden_modules =
+    src.ingestion
+    src.orchestration
+
+[importlinter:contract:config-is-a-leaf]
+name = Config must not import any pipeline layer, keeping it importable first
+type = forbidden
+source_modules =
+    src.config
+forbidden_modules =
+    src.orchestration
+    src.ingestion
+    src.sentiment
+    src.graph
+    src.cli
+
+[importlinter:contract:observability-is-a-leaf]
+name = Observability is the leaf layer; every other layer may depend on it, never the reverse
+type = layers
+layers =
+    src.orchestration
+    src.ingestion
+    src.sentiment
+    src.graph
+    src.cli
+    src.observability
+exhaustive = false
