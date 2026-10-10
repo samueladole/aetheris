@@ -5,27 +5,83 @@ sentiment model inference, and graph mutation emit distributed trace spans and
 performance metrics using open-source telemetry standards. This module provides
 the single tracer/meter/logger configuration the whole pipeline shares.
 
-A no-op fallback is used when no OTLP collector is reachable, so the pipeline
-runs fully offline (dry-run / CI) without a telemetry backend.
+Export behaviour:
+
+  * ``OTEL_EXPORTER_OTLP_ENDPOINT`` set  -> export to that collector (self-hosted
+    Jaeger per research.md §C).
+  * otherwise                            -> no network exporter is added. Spans
+    are still created and *still recording*; they simply have nowhere to be
+    shipped. An in-memory exporter records them so tests can assert on span
+    coverage (T067) without a collector.
+
+A console exporter is deliberately NOT installed by default: it captures stdout
+at construction time and emits noise into any caller's output, which breaks CLI
+JSON output and pytest capture. Set ``AETHERIS_TRACE_STDOUT=1`` to opt in.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+)
 
 from src.config.settings import Settings
 
 _TRACER_NAME = "aetheris"
 _initialized = False
+
 log = logging.getLogger(__name__)
+
+
+class InMemorySpanExporter:
+    """Keeps the most recent spans in memory, for tests and `status`.
+
+    Bounded so a long-running process cannot accumulate spans unboundedly.
+    """
+
+    MAX_SPANS = 2000
+
+    def __init__(self) -> None:
+        self._spans: deque[ReadableSpan] = deque(maxlen=self.MAX_SPANS)
+
+    def export(self, spans: list[ReadableSpan]) -> None:
+        self._spans.extend(spans)
+
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+    def snapshot(self) -> list[ReadableSpan]:
+        return list(self._spans)
+
+    def names(self) -> list[str]:
+        return [s.name for s in self._spans]
+
+    def clear(self) -> None:
+        self._spans.clear()
+
+
+# Process-wide, so `aetheris status` and tests can both read it.
+_memory_exporter = InMemorySpanExporter()
+
+
+def get_memory_exporter() -> InMemorySpanExporter:
+    """The in-memory span store, useful for assertions and diagnostics."""
+    return _memory_exporter
 
 
 def _build_resource(settings: Settings) -> Resource:
@@ -38,12 +94,7 @@ def _build_resource(settings: Settings) -> Resource:
 
 
 def init_telemetry(settings: Settings, *, force: bool = False) -> None:
-    """Initialise global OTel providers exactly once per process.
-
-    Uses an OTLP gRPC exporter when ``settings.otlp_endpoint`` is set, otherwise
-    falls back to a console exporter so spans are still produced (and testable)
-    without a collector.
-    """
+    """Initialise global OTel providers exactly once per process."""
     global _initialized
     if _initialized and not force:
         return
@@ -51,6 +102,7 @@ def init_telemetry(settings: Settings, *, force: bool = False) -> None:
 
     resource = _build_resource(settings)
     provider = TracerProvider(resource=resource)
+    provider.add_span_processor(SimpleSpanProcessor(_memory_exporter))
 
     if settings.otlp_endpoint:
         try:
@@ -63,12 +115,10 @@ def init_telemetry(settings: Settings, *, force: bool = False) -> None:
             )
             log.info("otel: exporting spans to %s", settings.otlp_endpoint)
         except Exception as exc:  # pragma: no cover - transport failure
-            log.warning("otel: OTLP exporter unavailable (%s); using console", exc)
-            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    else:
-        # No collector configured: still emit spans, just print them. Keeps the
-        # "spans always emitted" contract true even in dry-run/CI.
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+            log.warning("otel: OTLP exporter unavailable (%s)", exc)
+
+    if os.environ.get("AETHERIS_TRACE_STDOUT", "").strip().lower() in {"1", "true", "yes"}:
+        provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
     trace.set_tracer_provider(provider)
 
@@ -94,8 +144,8 @@ def span(
 ) -> Iterator[trace.Span]:
     """Start a span, recording any exception as an error event before re-raising.
 
-    This is the only sanctioned way to create spans in Aetheris so that every
-    layer emits them consistently (invariant in contracts/adapter-protocol.md).
+    This is the only sanctioned way to create spans in Aetheris, so every layer
+    emits them consistently (adapter-protocol.md).
     """
     tracer = get_tracer()
     with tracer.start_as_current_span(name, kind=kind, attributes=attributes) as s:

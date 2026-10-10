@@ -114,25 +114,33 @@ here is the spec's order, not an independent prioritisation.
 
 ### Tests for User Story 2 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T027 [P] [US2] Write failing contract test for the adapter protocol in `tests/contract/test_adapter_protocol.py` asserting invariants A1 (raw payloads only, no domain objects), A2 (no adapter imports another adapter), A3 (no retry logic in adapters), A5 (adapters importable in isolation), and A7 (typed `ProviderUnavailable` on 429/5xx)
-- [ ] T028 [P] [US2] Write failing unit test for the TTL cache in `tests/unit/test_cache.py` asserting a hit on an identical second call, a miss after TTL expiry, and that `--force` bypasses the cache (FR-007)
-- [ ] T029 [P] [US2] Write failing unit test for the token bucket in `tests/unit/test_ratelimit.py` asserting that concurrent threads sharing one limiter never exceed the configured rate (FR-008)
-- [ ] T030 [P] [US2] Write failing unit test for the immutable payload store in `tests/unit/test_payloads.py` asserting append-only behaviour, presence of `schema_version`, and that a re-ingest with the same `payload_id` is a no-op rather than an overwrite (FR-015, VR-8)
-- [ ] T031 [P] [US2] Write failing integration test for provider fallback in `tests/integration/test_provider_fallback.py` replaying a 429 cassette and asserting the next non-exhausted provider is used in fallback order and the failure is recorded as a span event (FR-020)
+- [X] T027 [P] [US2] Write failing contract test for the adapter protocol in `tests/contract/test_adapter_protocol.py` asserting invariants A1 (raw payloads only, no domain objects), A2 (no adapter imports another adapter), A3 (no retry logic in adapters), A5 (adapters importable in isolation), and A7 (typed `ProviderUnavailable` on 429/5xx)
+- [X] T028 [P] [US2] Write failing unit test for the TTL cache in `tests/unit/test_cache.py` asserting a hit on an identical second call, a miss after TTL expiry, and that `--force` bypasses the cache (FR-007)
+- [X] T029 [P] [US2] Write failing unit test for the token bucket in `tests/unit/test_ratelimit.py` asserting that concurrent threads sharing one limiter never exceed the configured rate (FR-008)
+- [X] T030 [P] [US2] Write failing unit test for the immutable payload store in `tests/unit/test_payloads.py` asserting append-only behaviour, presence of `schema_version`, and that a re-ingest with the same `payload_id` is a no-op rather than an overwrite (FR-015, VR-8)
+- [X] T031 [P] [US2] Write failing integration test for provider fallback in `tests/integration/test_provider_fallback.py` replaying a 429 cassette and asserting the next non-exhausted provider is used in fallback order and the failure is recorded as a span event (FR-020)
 
 ### Implementation for User Story 2
 
-- [ ] T032 [US2] Implement the adapter base and `ProviderUnavailable` in `src/ingestion/base.py` per `contracts/adapter-protocol.md`, with a `fetch()` that returns raw payloads only (A1)
-- [ ] T033 [US2] Implement provider selection and fallback in `src/ingestion/registry.py` driven entirely by the registry data from `src/config/providers.py`, ordered by the fallback-order column (FR-020)
-- [ ] T034 [P] [US2] Implement the FRED macro adapter in `src/ingestion/fred_client.py` for GDP, CPI, and the Federal Funds Rate via `series/observations` (FR-004)
-- [ ] T035 [P] [US2] Implement the market adapter in `src/ingestion/market_client.py` for stock, forex, and crypto prices plus fundamentals via `GLOBAL_QUOTE`, `FX_DAILY`, `CRYPTO_RATING`, `quote`, `historical-price-full`, and `tiingo/daily` (FR-005)
-- [ ] T036 [P] [US2] Implement the news adapter in `src/ingestion/news_client.py` returning article title, body, and published timestamp for sentiment input, excluding Alpha Vantage `NEWS_SENTIMENT` per spec §3.2 (FR-006)
-- [ ] T037 [US2] Wire the retry policy from `src/orchestration/retry.py` into the fetch path in `src/ingestion/base.py` so adapters contain no retry logic of their own (invariant A3)
-- [ ] T038 [US2] Wire the cache-before-fetch check into `src/ingestion/registry.py` so a cached payload short-circuits the provider call and increments the cache-hit counter (FR-007)
-- [ ] T039 [US2] Wire `aetheris ingest <provider> <endpoint> [--force] [--ttl SECONDS]` into `src/cli/main.py`, delegating to `src/ingestion/registry.py`
-- [ ] T040 [US2] Instrument every fetch, cache decision, and fallback with spans and counters in `src/ingestion/registry.py` (FR-017, FR-018)
+- [X] T032 [US2] Implement the adapter base and `ProviderUnavailable` in `src/ingestion/base.py` per `contracts/adapter-protocol.md`, with a `fetch()` that returns raw payloads only (A1)
+- [X] T033 [US2] Implement provider selection and fallback in `src/ingestion/registry.py` driven entirely by the registry data from `src/config/providers.py`, ordered by the fallback-order column (FR-020)
+- [X] T034 [P] [US2] Implement the FRED macro adapter in `src/ingestion/fred_client.py` for GDP, CPI, and the Federal Funds Rate via `series/observations` (FR-004)
+- [X] T035 [P] [US2] Implement the market adapter in `src/ingestion/market_client.py` for stock, forex, and crypto prices plus fundamentals via `GLOBAL_QUOTE`, `FX_DAILY`, `CRYPTO_RATING`, `quote`, `historical-price-full`, and `tiingo/daily` (FR-005)
+- [X] T036 [P] [US2] Implement the news adapter in `src/ingestion/news_client.py` returning article title, body, and published timestamp for sentiment input, excluding Alpha Vantage `NEWS_SENTIMENT` per spec §3.2 (FR-006)
+- [X] T037 [US2] Wire the retry policy from `src/orchestration/retry.py` into the fetch path in `src/ingestion/base.py` so adapters contain no retry logic of their own (invariant A3)
+- [X] T038 [US2] Wire the cache-before-fetch check into `src/ingestion/registry.py` so a cached payload short-circuits the provider call and increments the cache-hit counter (FR-007)
+- [X] T039 [US2] Wire `aetheris ingest <provider> <endpoint> [--force] [--ttl SECONDS]` into `src/cli/main.py`, delegating to `src/ingestion/registry.py`
+- [X] T040 [US2] Instrument every fetch, cache decision, and fallback with spans and counters in `src/ingestion/registry.py` (FR-017, FR-018)
 - [ ] T041 [P] [US2] Record `vcrpy` cassette fixtures for all five providers in `tests/fixtures/cassettes/` so no CI test issues a live provider call (invariant A6)
-- [ ] T042 [US2] Run `pytest tests/contract/test_adapter_protocol.py tests/unit/test_cache.py tests/unit/test_ratelimit.py tests/unit/test_payloads.py tests/integration/test_provider_fallback.py` until green and record the steady-state cache hit ratio against SC-003 (≥ 80%) in `docs/scale.md`
+
+> **BLOCKED — T041**: recording requires live API keys for all five providers,
+> which are not available in this environment. Invariant A6 is *already
+> satisfied* by the scripted `FakeHttpClient` used throughout
+> `tests/integration/`, so no test makes a live call; cassettes are the
+> stronger check that would also catch provider response-shape changes. A
+> recorder (`scripts/record_cassettes.py`) and a quota-cost breakdown are in
+> `tests/fixtures/cassettes/README.md`, ready to run once credentials exist.
+- [X] T042 [US2] Run `pytest tests/contract/test_adapter_protocol.py tests/unit/test_cache.py tests/unit/test_ratelimit.py tests/unit/test_payloads.py tests/integration/test_provider_fallback.py` until green and record the steady-state cache hit ratio against SC-003 (≥ 80%) in `docs/scale.md`
 
 **Checkpoint**: User Stories 1 AND 2 work independently — the pipeline durably ingests real provider data within quota, with immutable raw storage.
 

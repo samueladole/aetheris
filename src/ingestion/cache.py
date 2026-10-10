@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from src.ingestion.payloads import RawPayload, RawPayloadStore
 from src.observability.metrics import get_metrics
+from src.observability.telemetry import span_event
 
 
 @dataclass(frozen=True)
@@ -38,25 +40,58 @@ class TTLCache:
         self._misses = 0
         self._lock = threading.Lock()
 
-    def get(self, provider: str, endpoint: str, request_hash: str) -> CacheOutcome:
-        """Look up a fresh-enough cached payload for this request."""
+    def get(
+        self,
+        provider: str,
+        endpoint: str,
+        request_hash: str,
+        *,
+        ttl_override: int | None = None,
+    ) -> CacheOutcome:
+        """Look up a fresh-enough cached payload for this request.
+
+        ``ttl_override`` replaces the stored TTL for this lookup only, which is
+        how ``--force`` (an override of 0) bypasses the cache without needing a
+        separate code path in the registry.
+        """
         payload = self._store.latest(provider, endpoint, request_hash)
         if payload is None:
             self._record(hit=False)
             return CacheOutcome(False, None, "absent")
 
-        if payload.is_stale():
+        effective_ttl = (
+            payload.ttl_seconds if ttl_override is None else ttl_override
+        )
+        if effective_ttl is not None and self._is_stale(payload, effective_ttl):
             self._record(hit=False)
             return CacheOutcome(
-                False, payload, "stale", ttl_seconds=payload.ttl_seconds
+                False, payload, "stale", ttl_seconds=effective_ttl
             )
 
         self._record(hit=True)
-        return CacheOutcome(True, payload, "fresh", ttl_seconds=payload.ttl_seconds)
+        return CacheOutcome(
+            True, payload, "fresh", ttl_seconds=effective_ttl
+        )
+
+    @staticmethod
+    def _is_stale(payload: RawPayload, ttl_seconds: int) -> bool:
+        if ttl_seconds <= 0:
+            return True  # a zero TTL makes every payload stale — this is --force
+        now = datetime.now(UTC)
+        return (now - payload.fetched_at).total_seconds() >= ttl_seconds
 
     def ttl_for(self, override: int | None = None) -> int:
         """Resolve the effective TTL: explicit override, else the configured default."""
         return self._default_ttl_s if override is None else override
+
+    def record_store(self, provider: str) -> None:
+        """Note that a payload was appended to the store.
+
+        Called by the registry after a successful fetch so telemetry reflects a
+        store even though the cache itself reads from the same store and needs
+        no separate write path.
+        """
+        span_event("cache.stored", **{"aetheris.provider": provider})
 
     # -- statistics (back SC-003) ---------------------------------------
     def stats(self) -> dict[str, float]:

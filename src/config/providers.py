@@ -31,11 +31,18 @@ REDISTRIBUTION_FORBIDDEN = "forbidden"
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """One row of the spec §3.2.1 registry table."""
+    """One row of the spec §3.2.1 registry table.
+
+    ``market_endpoints`` and ``news_endpoints`` are kept separate because a
+    provider may declare endpoints in both columns (Finnhub, FMP, Tiingo) and
+    the two adapters that serve them are distinct. ``endpoints`` is their union,
+    matching the spec table's "Endpoints (v1)" column exactly.
+    """
 
     name: str
     module: str
-    endpoints: tuple[str, ...]
+    market_endpoints: tuple[str, ...]
+    news_endpoints: tuple[str, ...]
     # Free-tier limits
     requests_per_minute: int | None
     requests_per_hour: int | None
@@ -45,6 +52,10 @@ class ProviderSpec:
     # Licensing / redistribution posture
     redistribution: str
     notes: str = ""
+
+    @property
+    def endpoints(self) -> tuple[str, ...]:
+        return self.market_endpoints + self.news_endpoints
 
     @property
     def has_minute_limit(self) -> bool:
@@ -73,7 +84,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         name="fred",
         module="src.ingestion.fred_client",
-        endpoints=("series/observations",),
+        market_endpoints=("series/observations",),
+        news_endpoints=(),
         requests_per_minute=120,
         requests_per_hour=None,
         requests_per_day=None,
@@ -87,7 +99,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         name="alpha_vantage",
         module="src.ingestion.market_client",
-        endpoints=("GLOBAL_QUOTE", "FX_DAILY", "CRYPTO_RATING"),
+        market_endpoints=("GLOBAL_QUOTE", "FX_DAILY", "CRYPTO_RATING"),
+        news_endpoints=(),
         requests_per_minute=None,
         requests_per_hour=None,
         requests_per_day=25,
@@ -101,7 +114,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         name="finnhub",
         module="src.ingestion.market_client",
-        endpoints=("quote", "/news", "stock/profile2"),
+        market_endpoints=("quote", "stock/profile2"),
+        news_endpoints=("/news",),
         requests_per_minute=60,
         requests_per_hour=None,
         requests_per_day=None,
@@ -115,7 +129,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         name="fmp",
         module="src.ingestion.market_client",
-        endpoints=("quote", "historical-price-full", "fmp/articles"),
+        market_endpoints=("quote", "historical-price-full"),
+        news_endpoints=("fmp/articles",),
         requests_per_minute=None,
         requests_per_hour=None,
         requests_per_day=250,
@@ -129,7 +144,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         name="tiingo",
         module="src.ingestion.market_client",
-        endpoints=("tiingo/daily", "iex", "tiingo/news"),
+        market_endpoints=("tiingo/daily", "iex"),
+        news_endpoints=("tiingo/news",),
         requests_per_minute=None,
         requests_per_hour=50,
         requests_per_day=1000,

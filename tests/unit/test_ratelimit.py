@@ -50,7 +50,8 @@ class TestSharedLimiter:
         spec = ProviderSpec(
             name="test",
             module="m",
-            endpoints=("e",),
+            market_endpoints=("e",),
+            news_endpoints=(),
             requests_per_minute=60,
             requests_per_hour=None,
             requests_per_day=None,
@@ -79,7 +80,8 @@ class TestSharedLimiter:
         spec = ProviderSpec(
             name="tight",
             module="m",
-            endpoints=("e",),
+            market_endpoints=("e",),
+            news_endpoints=(),
             requests_per_minute=None,
             requests_per_hour=12,  # -> 0/min -> floored to 1
             requests_per_day=None,

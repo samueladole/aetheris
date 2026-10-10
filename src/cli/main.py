@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from typing import Any
 
 from src.cli import licenses
 from src.config.settings import ConfigError, Settings, get_settings
@@ -62,6 +63,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
+
+    # -- ingest (T039) -------------------------------------------------
+    ing = sub.add_parser(
+        "ingest", parents=[parent], help="Run a single ingestion adapter"
+    )
+    ing.add_argument("provider", metavar="<provider>", help="e.g. fred, finnhub, tiingo")
+    ing.add_argument("endpoint", metavar="<endpoint>", help="e.g. series/observations")
+    ing.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Request parameter (repeatable)",
+    )
+    ing.add_argument(
+        "--data-type",
+        metavar="TYPE",
+        help="Capability key: macro, prices, fundamentals, news",
+    )
+    ing.add_argument(
+        "--force", action="store_true", help="Bypass the TTL cache (FR-007)"
+    )
+    ing.add_argument(
+        "--ttl", type=int, metavar="SECONDS", help="Cache TTL override for this payload"
+    )
 
     # -- run (T024) -----------------------------------------------------
     run = sub.add_parser("run", parents=[parent], help="Execute the full pipeline durably")
@@ -116,6 +142,142 @@ def _cmd_check_licenses(args: argparse.Namespace) -> int:
     else:
         print(licenses.format_report(report))
     return EXIT_OK if report.passed else EXIT_LICENSE
+
+
+def _parse_params(pairs: list[str]) -> dict[str, str]:
+    params: dict[str, str] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep:
+            raise ConfigError(f"--param expects KEY=VALUE, got {pair!r}")
+        params[key.strip()] = value.strip()
+    return params
+
+
+def _build_adapters(settings: Settings, provider: str) -> list[Any]:
+    """Instantiate the concrete adapter(s) for ``provider``.
+
+    Adapters contain no retry logic (invariant A3); they only shape requests.
+    A single provider may back both market data and news, so both adapters are
+    returned and the registry picks whichever matches the endpoint.
+    """
+    from src.ingestion.fred_client import FredAdapter
+    from src.ingestion.market_client import MarketAdapter
+    from src.ingestion.news_client import NewsAdapter
+
+    creds = settings.provider_credentials()
+    key = creds.get(provider)
+
+    if provider == "fred":
+        return [FredAdapter(api_key=key)]
+    if provider in {"alpha_vantage", "finnhub", "fmp", "tiingo"}:
+        return [
+            MarketAdapter(provider, api_key=key),
+            NewsAdapter(provider, api_key=key),
+        ]
+    raise ConfigError(f"unknown provider {provider!r}")
+
+
+def _cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris ingest` — run one adapter through the registry (T039)."""
+    from src.config.providers import get_registry
+    from src.ingestion.base import ProviderUnavailable
+    from src.ingestion.registry import build_registry
+
+    registry_spec = get_registry()
+    try:
+        spec = registry_spec.get(args.provider)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    if args.endpoint not in spec.endpoints:
+        print(
+            f"error: provider {args.provider!r} does not declare endpoint "
+            f"{args.endpoint!r}. Declared: {list(spec.endpoints)}",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    try:
+        params = _parse_params(args.param)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    reg = build_registry(
+        raw_db_path=settings.raw_db_path,
+        default_ttl_s=settings.cache_default_ttl_s,
+        activity_timeout_s=settings.activity_timeout_s,
+    )
+
+    # Register the adapter(s) for the requested provider.
+    try:
+        for adapter in _build_adapters(settings, args.provider):
+            reg.register_adapter(adapter)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    data_type = args.data_type or _infer_data_type(args.provider, args.endpoint)
+
+    from src.observability.telemetry import init_telemetry
+
+    init_telemetry(settings)
+
+    try:
+        outcome = reg.fetch(
+            data_type,
+            endpoint=args.endpoint,
+            params=params,
+            ttl_seconds=args.ttl,
+            force=args.force,
+        )
+    except ProviderUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    stats = reg.snapshot()
+    if args.json:
+        import json
+
+        print(
+            json.dumps(
+                {
+                    "payload_id": outcome.payload.payload_id,
+                    "provider": outcome.provider,
+                    "endpoint": outcome.payload.endpoint,
+                    "served_from_cache": outcome.served_from_cache,
+                    "bytes": len(outcome.payload.body),
+                    "schema_version": outcome.payload.schema_version,
+                    "fallbacks": outcome.fallbacks,
+                    "cache": stats["cache"],
+                },
+                indent=2,
+            )
+        )
+    else:
+        source = "cache" if outcome.served_from_cache else outcome.provider
+        print(f"Ingested {outcome.payload.endpoint} from {source}")
+        print(f"  payload_id: {outcome.payload.payload_id}")
+        print(f"  bytes:      {len(outcome.payload.body)}")
+        if outcome.fallbacks:
+            print(f"  fallbacks:  {outcome.fallbacks}")
+    return EXIT_OK
+
+
+def _infer_data_type(provider: str, endpoint: str) -> str:
+    """Map a provider/endpoint onto a capability key (registry §capability map)."""
+    if provider == "fred":
+        return "macro"
+    if endpoint in {"/news", "fmp/articles", "tiingo/news"}:
+        return "news"
+    if endpoint in {"stock/profile2"}:
+        return "fundamentals"
+    return "prices"
 
 
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
@@ -250,6 +412,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_check_licenses(args)
         if args.command == "run":
             return _cmd_run(args, settings)
+        if args.command == "ingest":
+            return _cmd_ingest(args, settings)
         if args.command == "status":
             return _cmd_status(args, settings)
         if args.command == "version":
