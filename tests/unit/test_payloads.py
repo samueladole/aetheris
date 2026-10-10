@@ -16,13 +16,16 @@ from src.ingestion.payloads import RawPayloadStore, build_payload_id
 
 @pytest.fixture()
 def store(tmp_path):
+    """Test that store."""
     s = RawPayloadStore(str(tmp_path / "raw.db"))
     yield s
     s.close()
 
 
 class TestRawPayloadStore:
+    """Test raw payload store."""
     def test_store_and_retrieve(self, store):
+        """Test that store and retrieve."""
         payload, created = store.store(
             provider="fred",
             endpoint="series/observations",
@@ -55,6 +58,7 @@ class TestRawPayloadStore:
         assert store.count("fred") == 2, "history must not be overwritten"
 
     def test_latest_returns_most_recent(self, store):
+        """Test that latest returns most recent."""
         store.store(
             provider="fred",
             endpoint="series/observations",
@@ -72,6 +76,7 @@ class TestRawPayloadStore:
         assert latest.body == b"new"
 
     def test_payload_id_format(self):
+        """Test that payload id format."""
         from datetime import datetime
 
         ts = datetime(2026, 10, 10, 14, 30, tzinfo=UTC)
@@ -79,6 +84,7 @@ class TestRawPayloadStore:
         assert pid == "fred:series/observations:h:2026-10-10T14:30:00+00:00"
 
     def test_count_filters_by_provider(self, store):
+        """Test that count filters by provider."""
         store.store(provider="fred", endpoint="e", request_hash="h", body=b"")
         store.store(provider="tiingo", endpoint="e", request_hash="h", body=b"")
         assert store.count("fred") == 1
@@ -86,7 +92,9 @@ class TestRawPayloadStore:
 
 
 class TestTTLCache:
+    """Test ttlcache."""
     def test_fresh_payload_is_a_hit(self, store):
+        """Test that fresh payload is a hit."""
         store.store(
             provider="fred",
             endpoint="series/observations",
@@ -101,12 +109,14 @@ class TestTTLCache:
         assert outcome.payload is not None
 
     def test_absent_is_a_miss(self, store):
+        """Test that absent is a miss."""
         cache = TTLCache(store)
         outcome = cache.get("fred", "series/observations", "nope")
         assert not outcome.hit
         assert outcome.reason == "absent"
 
     def test_expired_is_a_miss(self, store):
+        """Test that expired is a miss."""
         from datetime import datetime
 
         past = datetime.now(UTC) - timedelta(hours=2)
@@ -124,6 +134,7 @@ class TestTTLCache:
         assert outcome.reason == "stale"
 
     def test_hit_ratio_tracks_hits_and_misses(self, store):
+        """Test that hit ratio tracks hits and misses."""
         cache = TTLCache(store)
         store.store(provider="fred", endpoint="e", request_hash="h", body=b"x")
         cache.get("fred", "e", "h")  # hit
@@ -134,6 +145,7 @@ class TestTTLCache:
         assert stats["hit_ratio"] == 0.5
 
     def test_ttl_for_resolves_override(self, store):
+        """Test that ttl for resolves override."""
         cache = TTLCache(store, default_ttl_s=100)
         assert cache.ttl_for() == 100
         assert cache.ttl_for(5) == 5

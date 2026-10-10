@@ -26,6 +26,7 @@ PROG = "aetheris"
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the parser."""
     parser = argparse.ArgumentParser(
         prog=PROG,
         description="Financial Intelligence Knowledge Graph & Sentiment Analysis Engine",
@@ -265,26 +266,41 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
               file=sys.stderr)
         return EXIT_USAGE
 
-    if not args.no_gates:
-        for argv, name in [
-            (_DOCSTRING_GATE, "docstring gate (FR-006)"),
-            (_MKDOCS_BUILD, "site build (FR-010)"),
-        ]:
-            ok, detail = _run_gate(argv, name=name)
-            if not ok:
-                print(f"error: {detail}", file=sys.stderr)
-                return EXIT_LICENSE
-    else:
-        print("warning: --no-gates skips the docstring and build gates",
-              file=sys.stderr)
+    # The site must ALWAYS be built; --no-gates skips the *checks*, not the
+    # build. Skipping the build would leave `serve` and the a11y gates (which
+    # run over site/) with nothing to work on.
+    ok, detail = _run_gate(_MKDOCS_BUILD, name="site build (FR-010)")
+    if not ok:
+        print(f"error: {detail}", file=sys.stderr)
+        return EXIT_LICENSE
 
-    # The a11y gates run over the built site, so they need the build first.
-    site = Path("site")
-    if not args.no_gates and site.is_dir():
+    if args.no_gates:
+        print(
+            "warning: --no-gates skips the docstring, secret, and accessibility "
+            "checks (development convenience; never usable in CI)",
+            file=sys.stderr,
+        )
+    else:
+        ok, detail = _run_gate(_DOCSTRING_GATE, name="docstring gate (FR-006)")
+        if not ok:
+            print(f"error: {detail}", file=sys.stderr)
+            return EXIT_LICENSE
+
+    # Material emits duplicate landmark aria-labels. Disambiguate them before
+    # the structural gate so it judges content rather than theme noise.
+    ok, detail = _run_gate(
+        [sys.executable, "scripts/fix_landmark_labels.py", "site/"],
+        name="landmark label fix",
+    )
+    if not ok:
+        print(f"error: {detail}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    if not args.no_gates:
         for argv, name in [
             (["npx", "html-validate", "site/**/*.html", "--formatter", "stylish"],
              "accessibility gate — structural (FR-019)"),
-            (["python", "scripts/check_a11y_rendered.py", "site/"],
+            ([sys.executable, "scripts/check_a11y_rendered.py", "site/"],
              "accessibility gate — rendered (FR-019)"),
         ]:
             ok, detail = _run_gate(argv, name=name)
@@ -292,7 +308,7 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
                 print(f"error: {detail}", file=sys.stderr)
                 return EXIT_LICENSE
 
-    print(f"Documentation built into {site}/")
+    print("Documentation built into site/")
     return EXIT_OK
 
 
@@ -542,6 +558,7 @@ def _cmd_status(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Handle the main."""
     parser = build_parser()
     try:
         args = parser.parse_args(argv)

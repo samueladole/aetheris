@@ -72,6 +72,7 @@ class RawPayloadStore:
     """Append-only SQLite store of raw provider responses."""
 
     def __init__(self, db_path: str) -> None:
+        """Initialise the instance."""
         self._db_path = db_path
         self._local = threading.local()
         with self._connect() as conn:
@@ -131,6 +132,7 @@ class RawPayloadStore:
         return self._to_model(row), created
 
     def get(self, payload_id: str) -> RawPayload | None:
+        """Handle the get."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM raw_payload WHERE payload_id = ?", (payload_id,)
@@ -151,6 +153,7 @@ class RawPayloadStore:
         return self._to_model(row) if row else None
 
     def count(self, provider: str | None = None) -> int:
+        """Handle the count."""
         sql = "SELECT COUNT(*) FROM raw_payload"
         params: tuple[str, ...] = ()
         if provider:
@@ -173,6 +176,7 @@ class RawPayloadStore:
         )
 
     def close(self) -> None:
+        """Handle the close."""
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             conn.close()

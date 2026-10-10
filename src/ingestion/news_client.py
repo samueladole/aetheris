@@ -28,6 +28,7 @@ class NewsAdapter:
     """News articles and headlines for one provider (set per fetch)."""
 
     def __init__(self, provider: str, api_key: str | None = None) -> None:
+        """Initialise the instance."""
         if provider not in ENDPOINTS:
             raise AdapterError(
                 f"news adapter does not serve {provider!r}; "
@@ -38,15 +39,18 @@ class NewsAdapter:
 
     # -- ProviderAdapter protocol ---------------------------------------
     def can_handle(self, endpoint: str) -> bool:
+        """Return whether the handle is possible."""
         return endpoint == ENDPOINTS[self.provider]
 
     @property
     def endpoint(self) -> str:
+        """Return the endpoint for this object."""
         return ENDPOINTS[self.provider]
 
     def build_request(
         self, endpoint: str, params: Mapping[str, str]
     ) -> FetchRequest:
+        """Build the request."""
         if not self.can_handle(endpoint):
             raise AdapterError(
                 f"{self.provider} news adapter cannot serve {endpoint!r}; "
@@ -76,6 +80,7 @@ class NewsAdapter:
         return FetchRequest.create(self.provider, endpoint, url, merged)
 
     def headers(self) -> Mapping[str, str]:
+        """Handle the headers."""
         headers = {"Accept": "application/json"}
         if self.provider == "tiingo" and self._api_key:
             headers["Authorization"] = f"Token {self._api_key}"

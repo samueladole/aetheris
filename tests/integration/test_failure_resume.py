@@ -35,6 +35,7 @@ def async_test(fn: Callable[..., object]) -> Callable[..., object]:
 
 @pytest.fixture()
 def engine(tmp_path, monkeypatch):
+    """Test that engine."""
     import dbos
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -90,6 +91,7 @@ async def _start(dbos, workflow):
 
 
 class TestFailureAndResume:
+    """Test failure and resume."""
     @async_test
     async def test_failing_step_is_recorded_and_located(self, engine):
         """A failed step is durable, and its position is exactly findable."""
@@ -128,6 +130,7 @@ class TestFailureAndResume:
 
     @async_test
     async def test_complete_workflow_has_no_incomplete_step(self, engine):
+        """Test that complete workflow has no incomplete step."""
         dbos, _ = engine
         workflow, _ = _register(engine, "clean_step", fail_times=0)
         handle, error = await _start(dbos, workflow)
@@ -139,6 +142,7 @@ class TestFailureAndResume:
 
     @async_test
     async def test_step_state_is_success_after_single_attempt(self, engine):
+        """Test that step state is success after single attempt."""
         dbos, _ = engine
         workflow, _ = _register(engine, "one_shot", fail_times=0)
         handle, _ = await _start(dbos, workflow)

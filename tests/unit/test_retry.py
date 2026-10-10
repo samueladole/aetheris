@@ -31,6 +31,7 @@ def _settings(**overrides) -> Settings:
 
 
 class TestBackoffPolicy:
+    """Test backoff policy."""
     def test_exponential_sequence_without_jitter(self):
         """max_attempts=5 gives 4 retries: 1s, 2s, 4s, 8s."""
         policy = BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=5, jitter=False)
@@ -53,6 +54,7 @@ class TestBackoffPolicy:
         assert policy.delay_before_attempt(2) == 1000
 
     def test_jitter_stays_within_bounds(self):
+        """Test that jitter stays within bounds."""
         policy = BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=5, jitter=True)
         for attempt in range(1, 6):
             base = policy._base_for(attempt)
@@ -60,22 +62,26 @@ class TestBackoffPolicy:
             assert 0 <= delay <= base, "jitter must only ever shorten the delay"
 
     def test_attempts_are_one_indexed(self):
+        """Test that attempts are one indexed."""
         policy = BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=5, jitter=False)
         with pytest.raises(ValueError):
             policy.delay_before_attempt(0)
 
     def test_no_wait_after_final_attempt(self):
+        """Test that no wait after final attempt."""
         policy = BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=1, jitter=False)
         with pytest.raises(RetryBudgetExhausted):
             policy.delay_before_attempt(2)
 
     def test_max_delay_caps_the_schedule(self):
+        """Test that max delay caps the schedule."""
         policy = BackoffPolicy(
             base_delay_ms=1000, multiplier=2.0, max_attempts=6, jitter=False, max_delay_ms=2500
         )
         assert policy.delay_before_attempt(4) == 2500
 
     def test_rejects_invalid_configuration(self):
+        """Test that rejects invalid configuration."""
         with pytest.raises(ValueError):
             BackoffPolicy(base_delay_ms=0, multiplier=2.0, max_attempts=5)
         with pytest.raises(ValueError):
@@ -84,13 +90,16 @@ class TestBackoffPolicy:
             BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=0)
 
     def test_is_exhausted(self):
+        """Test that is exhausted."""
         policy = BackoffPolicy(base_delay_ms=1000, multiplier=2.0, max_attempts=3)
         assert not policy.is_exhausted(2)
         assert policy.is_exhausted(3)
 
 
 class TestSettingsToPolicy:
+    """Test settings to policy."""
     def test_defaults_map_to_clarification_answer(self):
+        """Test that defaults map to clarification answer."""
         policy = build_step_retry_policy(_settings())
         assert policy.base_delay_ms == 1000
         assert policy.multiplier == 2.0
@@ -98,6 +107,7 @@ class TestSettingsToPolicy:
         assert policy.jitter is True
 
     def test_overrides_are_honoured(self):
+        """Test that overrides are honoured."""
         policy = build_step_retry_policy(
             _settings(
                 retry_base_delay_ms=250,
@@ -116,6 +126,7 @@ class TestDBOSStepMapping:
     """The policy must translate into the kwargs DBOS's @step decorator accepts."""
 
     def test_maps_to_dbos_step_kwargs(self):
+        """Test that maps to dbos step kwargs."""
         from src.orchestration.retry import step_retry_kwargs
 
         kwargs = step_retry_kwargs(_settings())
@@ -126,6 +137,7 @@ class TestDBOSStepMapping:
         assert kwargs["timeout_seconds"] == 300.0
 
     def test_retries_disabled_when_no_jitter_disabled(self):
+        """Test that retries disabled when no jitter disabled."""
         from src.orchestration.retry import step_retry_kwargs
 
         kwargs = step_retry_kwargs(_settings(retry_max_attempts=1))

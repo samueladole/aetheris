@@ -60,10 +60,11 @@ def _doc_path(path: Path) -> Path:
 
 
 def main() -> None:
-    """Write generated reference pages plus the root SUMMARY.md that
-    ``mkdocs-literate-nav`` consumes as the entire site navigation.
+    """Write generated reference pages and the root SUMMARY.md.
 
-    Writing the nav (rather than declaring it in ``mkdocs.yml``) is what keeps
+    The root SUMMARY.md is what ``mkdocs-literate-nav`` consumes as the entire
+    site navigation. Writing the nav (rather than declaring it in
+    ``mkdocs.yml``) is what keeps
     FR-004 true: adding a module adds its nav entry automatically.
     """
     nav = mkdocs_gen_files.Nav()

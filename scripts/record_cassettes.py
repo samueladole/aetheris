@@ -31,10 +31,12 @@ REQUESTS: list[tuple[str, str, dict[str, str]]] = [
 
 @dataclass
 class Recorder:
+    """Recorder."""
     output: Path
     dry_run: bool = False
 
     def run(self) -> int:
+        """Handle the run."""
         import os
 
         missing = [
@@ -115,6 +117,7 @@ def _data_type(provider: str, endpoint: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Handle the main."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",

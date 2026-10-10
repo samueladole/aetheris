@@ -17,6 +17,7 @@ from src.ingestion.payloads import RawPayloadStore
 
 @pytest.fixture()
 def store(tmp_path):
+    """Test that store."""
     s = RawPayloadStore(str(tmp_path / "raw.db"))
     yield s
     s.close()
@@ -37,7 +38,9 @@ def _stored(store: RawPayloadStore, *, request_hash: str, provider: str = "fred"
 
 
 class TestCacheHitAndMiss:
+    """Test cache hit and miss."""
     def test_fresh_payload_is_a_hit(self, store):
+        """Test that fresh payload is a hit."""
         _stored(store, request_hash="h")
         cache = TTLCache(store)
         outcome = cache.get("fred", "series/observations", "h")
@@ -46,12 +49,14 @@ class TestCacheHitAndMiss:
         assert outcome.payload is not None
 
     def test_absent_is_a_miss(self, store):
+        """Test that absent is a miss."""
         cache = TTLCache(store)
         outcome = cache.get("fred", "series/observations", "absent")
         assert not outcome.hit
         assert outcome.reason == "absent"
 
     def test_expired_is_a_miss(self, store):
+        """Test that expired is a miss."""
         _stored(store, request_hash="h", age_hours=2, ttl_seconds=60)
         cache = TTLCache(store)
         outcome = cache.get("fred", "series/observations", "h")
@@ -69,6 +74,7 @@ class TestForceBypass:
     """
 
     def test_zero_override_makes_a_fresh_payload_stale(self, store):
+        """Test that zero override makes a fresh payload stale."""
         _stored(store, request_hash="h", ttl_seconds=3600)
         cache = TTLCache(store)
         # Without an override this is a hit...
@@ -79,6 +85,7 @@ class TestForceBypass:
         assert forced.reason == "stale"
 
     def test_zero_override_is_counted_as_a_miss(self, store):
+        """Test that zero override is counted as a miss."""
         _stored(store, request_hash="h", ttl_seconds=3600)
         cache = TTLCache(store)
         cache.get("fred", "series/observations", "h", ttl_override=0)
@@ -94,13 +101,16 @@ class TestForceBypass:
         assert relaxed.hit
 
     def test_ttl_for_resolution(self, store):
+        """Test that ttl for resolution."""
         cache = TTLCache(store, default_ttl_s=100)
         assert cache.ttl_for() == 100
         assert cache.ttl_for(0) == 0
         assert cache.ttl_for(5) == 5
 
 class TestStatistics:
+    """Test statistics."""
     def test_hit_ratio_tracks_hits_and_misses(self, store):
+        """Test that hit ratio tracks hits and misses."""
         _stored(store, request_hash="h")
         cache = TTLCache(store)
         cache.get("fred", "series/observations", "h")          # hit
@@ -123,6 +133,7 @@ class TestStatistics:
         assert stats["hit_ratio"] >= 0.8, "SC-003 requires >= 80% at steady state"
 
     def test_metrics_are_recorded(self, store):
+        """Test that metrics are recorded."""
         from src.observability.metrics import get_metrics, reset
 
         reset()
@@ -134,6 +145,7 @@ class TestStatistics:
         assert m.cache_hits is not None and m.cache_misses is not None
 
     def test_reset_stats(self, store):
+        """Test that reset stats."""
         _stored(store, request_hash="h")
         cache = TTLCache(store)
         cache.get("fred", "series/observations", "h")

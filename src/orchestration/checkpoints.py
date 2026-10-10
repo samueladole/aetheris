@@ -44,10 +44,12 @@ class StepRecord:
 
     @property
     def succeeded(self) -> bool:
+        """Handle the succeeded."""
         return self.status.upper() == "SUCCESS"
 
     @property
     def failed(self) -> bool:
+        """Handle the failed."""
         return self.status.upper() == "ERROR"
 
 
@@ -241,6 +243,7 @@ def resume(workflow_id: str, *, start_step: int | None = None) -> WorkflowHandle
 
 
 def workflow_status(workflow_id: str) -> WorkflowHandle:
+    """Handle the workflow status."""
     import dbos
 
     try:
@@ -259,6 +262,7 @@ def workflow_status(workflow_id: str) -> WorkflowHandle:
 
 
 def recent_workflows(limit: int = 20) -> Iterable[WorkflowHandle]:
+    """Handle the recent workflows."""
     import dbos
 
     try:

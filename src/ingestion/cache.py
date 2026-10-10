@@ -34,6 +34,7 @@ class TTLCache:
     """TTL cache whose source of truth is the raw payload store."""
 
     def __init__(self, store: RawPayloadStore, *, default_ttl_s: int = 3600) -> None:
+        """Initialise the instance."""
         self._store = store
         self._default_ttl_s = default_ttl_s
         self._hits = 0
@@ -95,6 +96,7 @@ class TTLCache:
 
     # -- statistics (back SC-003) ---------------------------------------
     def stats(self) -> dict[str, float]:
+        """Return the current stats."""
         with self._lock:
             total = self._hits + self._misses
             ratio = (self._hits / total) if total else 0.0
@@ -106,6 +108,7 @@ class TTLCache:
             }
 
     def reset_stats(self) -> None:
+        """Handle the reset stats."""
         with self._lock:
             self._hits = 0
             self._misses = 0

@@ -84,6 +84,7 @@ class FetchOutcome:
 
     @property
     def cache_hit(self) -> bool:
+        """Handle the cache hit."""
         return self.served_from_cache
 
 
@@ -116,6 +117,7 @@ class IngestionRegistry:
         self._adapters[provider] = adapter
 
     def adapter_for(self, provider: str) -> Any:
+        """Handle the adapter for."""
         try:
             return self._adapters[provider]
         except KeyError as exc:
@@ -128,6 +130,7 @@ class IngestionRegistry:
     # Adapter state machine (data-model.md §5)
     # ------------------------------------------------------------------
     def adapter_state(self, provider: str) -> str:
+        """Handle the adapter state."""
         return self._adapter_state.get(provider, ADAPTER_HEALTHY)
 
     def _set_adapter_state(self, provider: str, state: str) -> None:
@@ -139,6 +142,7 @@ class IngestionRegistry:
             )
 
     def is_exhausted(self, provider: str) -> bool:
+        """Return whether this is exhausted."""
         return self.adapter_state(provider) == ADAPTER_EXHAUSTED
 
     # ------------------------------------------------------------------
@@ -340,6 +344,7 @@ class IngestionRegistry:
     # Introspection for `aetheris status`
     # ------------------------------------------------------------------
     def snapshot(self) -> dict[str, Any]:
+        """Return the current snapshot."""
         cache_stats = self.cache.stats() if self.cache else {}
         quota = self.rate_limiter.snapshot()
         return {

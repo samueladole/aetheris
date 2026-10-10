@@ -21,24 +21,29 @@ from src.orchestration.compensation import (
 
 
 class TestCompensationRegistry:
+    """Test compensation registry."""
     def test_register_and_retrieve(self):
+        """Test that register and retrieve."""
         reg = CompensationRegistry()
         reg.register("ingest", lambda: None)
         assert reg.has("ingest")
         assert reg.get("ingest") is not None
 
     def test_unregistered_step_has_no_compensation(self):
+        """Test that unregistered step has no compensation."""
         reg = CompensationRegistry()
         assert not reg.has("unknown")
         assert reg.get("unknown") is None
 
     def test_cannot_register_twice(self):
+        """Test that cannot register twice."""
         reg = CompensationRegistry()
         reg.register("ingest", lambda: None)
         with pytest.raises(ValueError):
             reg.register("ingest", lambda: None)
 
     def test_registered_names(self):
+        """Test that registered names."""
         reg = CompensationRegistry()
         reg.register("a", lambda: None)
         reg.register("b", lambda: None)
@@ -49,6 +54,7 @@ class TestStepStateMachine:
     """The FAILED -> COMPENSATING -> COMPENSATED path from data-model.md §5."""
 
     def test_happy_path_no_compensation(self):
+        """Test that happy path no compensation."""
         sm = StepStateMachine()
         assert sm.state == StepState.PENDING
         sm.start()
@@ -57,6 +63,7 @@ class TestStepStateMachine:
         assert sm.state == StepState.SUCCEEDED
 
     def test_failure_then_compensation(self):
+        """Test that failure then compensation."""
         sm = StepStateMachine()
         sm.start()
         sm.fail()
@@ -86,6 +93,7 @@ class TestStepStateMachine:
         assert sm.state == StepState.COMPENSATION_FAILED
 
     def test_compensation_runs_the_registered_action(self):
+        """Test that compensation runs the registered action."""
         calls: list[str] = []
         reg = CompensationRegistry()
         reg.register("ingest", lambda: calls.append("ingest"))
@@ -96,6 +104,7 @@ class TestStepStateMachine:
         assert calls == ["ingest"]
 
     def test_illegal_transitions_are_rejected(self):
+        """Test that illegal transitions are rejected."""
         sm = StepStateMachine()
         with pytest.raises(ValueError):
             sm.succeed()  # never started
@@ -107,6 +116,7 @@ class TestStepStateMachine:
             sm.start()  # already terminal
 
     def test_outcome_records_attempt_count(self):
+        """Test that outcome records attempt count."""
         sm = StepStateMachine()
         sm.start()
         sm.fail()

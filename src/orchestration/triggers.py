@@ -17,6 +17,7 @@ from src.config.settings import Settings
 
 
 class TriggerKind(StrEnum):
+    """Trigger kind."""
     SCHEDULE = "schedule"
     EVENT = "event"
 
@@ -33,6 +34,7 @@ class Trigger:
     detail: str = ""
 
     def describe(self) -> str:
+        """Describe this in human-readable form."""
         return f"{self.kind.value}{':' + self.detail if self.detail else ''}"
 
 
@@ -67,6 +69,7 @@ class ScheduleTrigger:
     """
 
     def __init__(self, expressions: dict[str, str] | None = None) -> None:
+        """Initialise the instance."""
         # cadence -> cron expression
         self._expressions = {
             "hourly": "0 * * * *",
@@ -76,9 +79,11 @@ class ScheduleTrigger:
         }
 
     def cadences(self) -> tuple[str, ...]:
+        """Return the configured set of cadences."""
         return tuple(sorted(self._expressions))
 
     def expression(self, cadence: str) -> str:
+        """Return the expression for this object."""
         try:
             return self._expressions[cadence]
         except KeyError as exc:
@@ -106,12 +111,15 @@ class EventTrigger:
     DEFAULT_EVENTS = ("manual", "provider_release", "webhook", "agent_signal")
 
     def __init__(self, events: tuple[str, ...] = DEFAULT_EVENTS) -> None:
+        """Initialise the instance."""
         self._events = events
 
     def events(self) -> tuple[str, ...]:
+        """Return the configured set of events."""
         return self._events
 
     def accepts(self, detail: str) -> bool:
+        """Return whether this accepts the given input."""
         return detail in self._events
 
 

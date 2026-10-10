@@ -15,11 +15,14 @@ from src.ingestion.registry import IngestionRegistry
 
 
 class FakeHttp:
+    """Fake http."""
     def __init__(self, body: bytes):
+        """Initialise the instance."""
         self.body = body
         self.calls: list[str] = []
 
     def get(self, url: str, *, params, headers, timeout):
+        """Test that get."""
         self.calls.append(url)
         return HttpResponse(200, self.body, {"Content-Type": "application/json"})
 
@@ -35,16 +38,20 @@ def _run(argv: list[str], monkeypatch, **env: str) -> tuple[int, str, str]:
 
 
 class TestIngestCommand:
+    """Test ingest command."""
     def test_unknown_provider_is_usage_error(self, monkeypatch):
+        """Test that unknown provider is usage error."""
         code, _, _ = _run(["ingest", "nope", "e"], monkeypatch)
         assert code == cli.EXIT_USAGE
 
     def test_endpoint_not_declared_is_usage_error(self, monkeypatch):
+        """Test that endpoint not declared is usage error."""
         code, _, err = _run(["ingest", "fred", "quote"], monkeypatch)
         assert code == cli.EXIT_USAGE
         assert "does not declare endpoint" in err
 
     def test_bad_param_is_usage_error(self, monkeypatch):
+        """Test that bad param is usage error."""
         code, _, err = _run(
             ["ingest", "fred", "series/observations", "--param", "noequals"],
             monkeypatch,
@@ -53,6 +60,7 @@ class TestIngestCommand:
         assert "KEY=VALUE" in err
 
     def test_unknown_data_type_is_usage_error(self, monkeypatch):
+        """Test that unknown data type is usage error."""
         code, _, err = _run(["run", "--trigger", "nonsense"], monkeypatch)
         assert code == cli.EXIT_USAGE
 

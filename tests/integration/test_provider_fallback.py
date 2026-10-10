@@ -36,10 +36,12 @@ class FakeHttpClient:
     """Scripted HTTP: returns the response queued for each provider, in order."""
 
     def __init__(self, responses: dict[str, list]) -> None:
+        """Initialise the instance."""
         self._responses = {k: list(v) for k, v in responses.items()}
         self.calls: list[str] = []
 
     def get(self, url: str, *, params, headers, timeout):
+        """Test that get."""
         provider = self._provider_of(url)
         self.calls.append(provider)
         queue = self._responses.get(provider) or []
@@ -75,6 +77,7 @@ def _err(code: int):
 
 @pytest.fixture()
 def store(tmp_path):
+    """Test that store."""
     s = RawPayloadStore(str(tmp_path / "raw.db"))
     yield s
     s.close()
@@ -102,6 +105,7 @@ def _cache(store: RawPayloadStore):
 
 
 class TestFallbackOrder:
+    """Test fallback order."""
     def test_429_on_first_provider_falls_through_to_next(self, store):
         """Finnhub is exhausted by quote -> FMP must serve it."""
         http = FakeHttpClient({
@@ -128,6 +132,7 @@ class TestFallbackOrder:
         assert http.calls == ["finnhub", "fmp"]
 
     def test_all_providers_exhausted_raises(self, store):
+        """Test that all providers exhausted raises."""
         http = FakeHttpClient({
             "finnhub": [_err(429)],
             "fmp": [_err(429)],
@@ -148,6 +153,7 @@ class TestFallbackOrder:
         assert outcome.provider == "fmp"
 
     def test_retryable_error_marks_rate_limited(self, store):
+        """Test that retryable error marks rate limited."""
         http = FakeHttpClient({
             "finnhub": [_err(429)],
             "fmp": [_ok()],
@@ -177,6 +183,7 @@ class TestFallbackOrder:
 
 
 class TestFallbackIsScopedToDataType:
+    """Test fallback is scoped to data type."""
     def test_macro_falls_back_nowhere(self, store):
         """FRED has no fallback: macro data cannot be substituted by prices."""
         http = FakeHttpClient({"fred": [_err(503)]})
@@ -188,7 +195,9 @@ class TestFallbackIsScopedToDataType:
 
 
 class TestImmutablePersistence:
+    """Test immutable persistence."""
     def test_successful_fetch_is_persisted_immutably(self, store):
+        """Test that successful fetch is persisted immutably."""
         http = FakeHttpClient({"finnhub": [_ok(b'{"c":1}')]})
         reg = _registry(store, http)
         outcome = reg.fetch("prices", endpoint="quote", params={"symbol": "AAPL"})
@@ -214,6 +223,7 @@ class TestImmutablePersistence:
 
 
 class TestCacheIntegration:
+    """Test cache integration."""
     def test_second_fetch_is_served_from_cache(self, store):
         """The registry checks the cache first, so no provider call is made."""
         http = FakeHttpClient({"finnhub": [_ok(b'{"c":1}')]})
@@ -227,6 +237,7 @@ class TestCacheIntegration:
         assert outcome.payload.body == b'{"c":1}'
 
     def test_force_bypasses_the_cache(self, store):
+        """Test that force bypasses the cache."""
         http = FakeHttpClient({
             "finnhub": [_ok(b'{"c":1}'), _ok(b'{"c":2}')],
         })
@@ -239,27 +250,33 @@ class TestCacheIntegration:
 
 
 class TestResolution:
+    """Test resolution."""
     def test_resolve_prices_in_fallback_order(self, store):
+        """Test that resolve prices in fallback order."""
         reg = _registry(store, FakeHttpClient({}))
         assert [s.name for s in reg.resolve("prices")] == [
             "alpha_vantage", "finnhub", "fmp", "tiingo"
         ]
 
     def test_quote_resolves_to_providers_that_declare_it(self, store):
+        """Test that quote resolves to providers that declare it."""
         reg = _registry(store, FakeHttpClient({}))
         names = [s.name for s in reg.resolve("prices", endpoint="quote")]
         assert names == ["finnhub", "fmp"], "only these two declare `quote`"
 
     def test_resolve_macro_is_fred_only(self, store):
+        """Test that resolve macro is fred only."""
         reg = _registry(store, FakeHttpClient({}))
         assert [s.name for s in reg.resolve("macro")] == ["fred"]
 
     def test_unknown_data_type_raises(self, store):
+        """Test that unknown data type raises."""
         reg = _registry(store, FakeHttpClient({}))
         with pytest.raises(RegistryError):
             reg.resolve("nonsense")
 
     def test_snapshot_reports_adapter_state(self, store):
+        """Test that snapshot reports adapter state."""
         http = FakeHttpClient({"finnhub": [_ok()]})
         reg = _registry(store, http)
         reg.fetch("prices", endpoint="quote", params={"symbol": "AAPL"})

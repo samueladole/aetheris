@@ -17,6 +17,7 @@ import duckdb
 
 
 class AssetClass(StrEnum):
+    """Asset class."""
     EQUITY = "equity"
     FOREX = "forex"
     CRYPTO = "crypto"
@@ -24,6 +25,7 @@ class AssetClass(StrEnum):
 
 
 class Frequency(StrEnum):
+    """Frequency."""
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
@@ -32,12 +34,14 @@ class Frequency(StrEnum):
 
 
 class RelationType(StrEnum):
+    """Relation type."""
     INFLUENCES = "INFLUENCES"
     CORRELATES_WITH = "CORRELATES_WITH"
     TARGETS = "TARGETS"
 
 
 class NodeType(StrEnum):
+    """Node type."""
     ASSET = "Asset"
     MACRO_INDICATOR = "MacroIndicator"
     SENTIMENT_METRIC = "SentimentMetric"
@@ -161,6 +165,7 @@ class GraphDatabase:
     """Owns the DuckDB connection and guarantees the schema exists."""
 
     def __init__(self, db_path: str = ":memory:") -> None:
+        """Initialise the instance."""
         self.db_path = db_path
         self._conn = duckdb.connect(db_path)
         self._lock = threading.Lock()
@@ -175,6 +180,7 @@ class GraphDatabase:
 
     @property
     def conn(self) -> duckdb.DuckDBPyConnection:
+        """Handle the conn."""
         return self._conn
 
     # ------------------------------------------------------------------
@@ -198,6 +204,7 @@ class GraphDatabase:
         return expected.issubset(found)
 
     def table_counts(self) -> dict[str, int]:
+        """Handle the table counts."""
         with self._lock:
             tables = [
                 "asset",
@@ -212,11 +219,13 @@ class GraphDatabase:
             }
 
     def close(self) -> None:
+        """Handle the close."""
         with self._lock:
             self._conn.close()
 
     # ------------------------------------------------------------------
     def execute(self, sql: str, params: list[object] | None = None):
+        """Handle the execute."""
         with self._lock:
             return self._conn.execute(sql, params or [])
 

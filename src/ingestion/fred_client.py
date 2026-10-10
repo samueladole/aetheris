@@ -23,18 +23,22 @@ ENDPOINT = "series/observations"
 
 
 class FredAdapter:
+    """Fred adapter."""
     provider = "fred"
 
     def __init__(self, api_key: str | None = None) -> None:
+        """Initialise the instance."""
         self._api_key = api_key
 
     # -- ProviderAdapter protocol ---------------------------------------
     def can_handle(self, endpoint: str) -> bool:
+        """Return whether the handle is possible."""
         return endpoint == ENDPOINT
 
     def build_request(
         self, endpoint: str, params: Mapping[str, str]
     ) -> FetchRequest:
+        """Build the request."""
         if endpoint != ENDPOINT:
             raise AdapterError(
                 f"fred adapter cannot serve {endpoint!r}; expected {ENDPOINT!r}"
@@ -55,6 +59,7 @@ class FredAdapter:
         return FetchRequest.create(self.provider, endpoint, BASE_URL, merged)
 
     def headers(self) -> Mapping[str, str]:
+        """Handle the headers."""
         return {"Accept": "application/json"}
 
     # -- helpers --------------------------------------------------------

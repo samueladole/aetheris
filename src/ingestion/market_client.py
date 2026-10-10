@@ -38,6 +38,7 @@ class MarketAdapter:
     """Prices and fundamentals for one provider (set per fetch)."""
 
     def __init__(self, provider: str, api_key: str | None = None) -> None:
+        """Initialise the instance."""
         if provider not in BASE_URLS:
             raise AdapterError(
                 f"market adapter does not serve {provider!r}; "
@@ -48,11 +49,13 @@ class MarketAdapter:
 
     # -- ProviderAdapter protocol ---------------------------------------
     def can_handle(self, endpoint: str) -> bool:
+        """Return whether the handle is possible."""
         return endpoint in PROVIDER_ENDPOINTS[self.provider]
 
     def build_request(
         self, endpoint: str, params: Mapping[str, str]
     ) -> FetchRequest:
+        """Build the request."""
         if not self.can_handle(endpoint):
             raise AdapterError(
                 f"{self.provider} cannot serve {endpoint!r}; "
@@ -89,6 +92,7 @@ class MarketAdapter:
         return FetchRequest.create(self.provider, endpoint, url, merged)
 
     def headers(self) -> Mapping[str, str]:
+        """Handle the headers."""
         headers = {"Accept": "application/json"}
         if self.provider == "tiingo" and self._api_key:
             headers["Authorization"] = f"Token {self._api_key}"

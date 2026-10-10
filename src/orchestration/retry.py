@@ -47,6 +47,7 @@ class BackoffPolicy:
     activity_timeout_s: float | None = None
 
     def __post_init__(self) -> None:
+        """Implement the __post_init__ special method."""
         if self.base_delay_ms <= 0:
             raise ValueError("base_delay_ms must be positive")
         if self.multiplier < 1.0:
@@ -90,6 +91,7 @@ class BackoffPolicy:
         return random.randint(0, base)  # noqa: S311 - jitter, not security
 
     def is_exhausted(self, attempts_made: int) -> bool:
+        """Return whether this is exhausted."""
         return attempts_made >= self.max_attempts
 
     def as_dbos_kwargs(self) -> dict[str, object]:

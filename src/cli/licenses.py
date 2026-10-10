@@ -102,11 +102,13 @@ class Component:
 
     @property
     def ok(self) -> bool:
+        """Handle the ok."""
         return self.verdict == "permitted"
 
 
 @dataclass(frozen=True)
 class LicenseReport:
+    """License report."""
     components: list[Component]
     strict: bool
     exemptions: frozenset[str] = frozenset()
@@ -118,10 +120,12 @@ class LicenseReport:
 
     @property
     def rejected(self) -> list[Component]:
+        """Handle the rejected."""
         return [c for c in self._relevant if c.verdict == "rejected"]
 
     @property
     def unknown(self) -> list[Component]:
+        """Handle the unknown."""
         return [c for c in self._relevant if c.verdict == "unknown"]
 
     @property
@@ -138,6 +142,7 @@ class LicenseReport:
 
     @property
     def coverage(self) -> tuple[int, int]:
+        """Handle the coverage."""
         return sum(1 for c in self._relevant if c.ok), len(self._relevant)
 
 
@@ -251,6 +256,7 @@ def format_report(report: LicenseReport) -> str:
 
 
 def report_as_json(report: LicenseReport) -> str:
+    """Handle the report as json."""
     return json.dumps(
         {
             "strict": report.strict,
@@ -275,6 +281,7 @@ def report_as_json(report: LicenseReport) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Handle the main."""
     argv = list(sys.argv[1:] if argv is None else argv)
     strict = "--lenient" not in argv
     report = audit_installed(strict=strict)

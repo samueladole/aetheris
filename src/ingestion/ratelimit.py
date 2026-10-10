@@ -32,6 +32,7 @@ class TokenBucket:
     """A classic token bucket: capacity is the per-minute rate, refilled per second."""
 
     def __init__(self, *, capacity: float, refill_per_second: float) -> None:
+        """Initialise the instance."""
         if capacity <= 0 or refill_per_second <= 0:
             raise ValueError("capacity and refill_per_second must be positive")
         self.capacity = float(capacity)
@@ -78,6 +79,7 @@ class TokenBucket:
             time.sleep(min(wait_s, 0.5))
 
     def available(self) -> float:
+        """Handle the available."""
         with self._lock:
             self._refill(time.monotonic())
             return self._tokens
@@ -87,10 +89,12 @@ class SharedRateLimiter:
     """One bucket per provider, shared across all worker threads."""
 
     def __init__(self) -> None:
+        """Initialise the instance."""
         self._buckets: dict[str, TokenBucket] = {}
         self._lock = threading.Lock()
 
     def bucket_for(self, spec: ProviderSpec) -> TokenBucket:
+        """Handle the bucket for."""
         key = spec.budget_key()
         with self._lock:
             bucket = self._buckets.get(key)
@@ -105,6 +109,7 @@ class SharedRateLimiter:
         return self.bucket_for(spec).acquire(1.0, timeout_s=timeout_s)
 
     def available(self, spec: ProviderSpec) -> float:
+        """Handle the available."""
         return self.bucket_for(spec).available()
 
     def snapshot(self) -> dict[str, float]:

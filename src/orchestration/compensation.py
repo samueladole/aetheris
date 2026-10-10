@@ -56,10 +56,12 @@ class StepOutcome:
 
     @property
     def ok(self) -> bool:
+        """Handle the ok."""
         return self.final_state == StepState.SUCCEEDED
 
     @property
     def compensated_cleanly(self) -> bool:
+        """Handle the compensated cleanly."""
         return self.final_state == StepState.COMPENSATED
 
 
@@ -67,6 +69,7 @@ class CompensationRegistry:
     """Maps a step name to the action that undoes it."""
 
     def __init__(self) -> None:
+        """Initialise the instance."""
         self._actions: dict[str, Callable[[], None]] = {}
 
     def register(self, step_name: str, action: Callable[[], None]) -> None:
@@ -76,12 +79,15 @@ class CompensationRegistry:
         self._actions[step_name] = action
 
     def has(self, step_name: str) -> bool:
+        """Handle the has."""
         return step_name in self._actions
 
     def get(self, step_name: str) -> Callable[[], None] | None:
+        """Handle the get."""
         return self._actions.get(step_name)
 
     def names(self) -> tuple[str, ...]:
+        """Return the configured set of names."""
         return tuple(sorted(self._actions))
 
     def run(self, step_name: str) -> None:
@@ -91,9 +97,11 @@ class CompensationRegistry:
             action()
 
     def __len__(self) -> int:
+        """Return the number of items."""
         return len(self._actions)
 
     def __iter__(self) -> Iterator[str]:
+        """Iterate over the items."""
         return iter(self.names())
 
 
@@ -109,10 +117,12 @@ class StepStateMachine:
     # -- transitions -----------------------------------------------------
     @property
     def state(self) -> StepState:
+        """Handle the state."""
         return self._state
 
     @property
     def terminal(self) -> bool:
+        """Handle the terminal."""
         return self._state in {
             StepState.SUCCEEDED,
             StepState.COMPENSATED,
@@ -128,12 +138,15 @@ class StepStateMachine:
         self._state = new
 
     def start(self) -> None:
+        """Handle the start."""
         self._to(StepState.RUNNING)
 
     def succeed(self) -> None:
+        """Handle the succeed."""
         self._to(StepState.SUCCEEDED)
 
     def fail(self) -> None:
+        """Handle the fail."""
         self._to(StepState.FAILED)
         get_metrics().step_failures.add(1)
         span_event("step.failed", **{"aetheris.step": self.step_name})
@@ -160,6 +173,7 @@ class StepStateMachine:
 
     @property
     def outcome(self) -> StepOutcome:
+        """Return the current outcome."""
         if self._state == StepState.RUNNING:
             return StepOutcome(self.step_name, StepState.RUNNING, False, self.attempts)
         return StepOutcome(

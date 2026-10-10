@@ -22,6 +22,7 @@ from src.graph.schema import (
 
 @pytest.fixture()
 def db():
+    """Test that db."""
     database = GraphDatabase(":memory:")
     yield database
     database.close()
@@ -39,15 +40,19 @@ def _insert(database: GraphDatabase, sql: str):
 
 
 class TestSchemaStructure:
+    """Test schema structure."""
     def test_all_tables_exist(self, db):
+        """Test that all tables exist."""
         assert db.verify()
 
     def test_row_counts_start_at_zero(self, db):
+        """Test that row counts start at zero."""
         counts = db.table_counts()
         assert set(counts) >= {"asset", "macro_indicator", "sentiment_metric", "graph_edge"}
         assert all(v == 0 for v in counts.values())
 
     def test_enum_values(self):
+        """Test that enum values."""
         assert AssetClass.EQUITY.value == "equity"
         assert Frequency.MONTHLY.value == "monthly"
         assert RelationType.TARGETS.value == "TARGETS"
@@ -58,6 +63,7 @@ class TestValidationRuleConstraints:
     """VR-1 .. VR-4 must be enforced by the database, not only by app code."""
 
     def test_vr1_score_above_one_rejected(self, db):
+        """Test that vr1 score above one rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -66,6 +72,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_vr1_score_below_minus_one_rejected(self, db):
+        """Test that vr1 score below minus one rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -74,6 +81,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_vr2_confidence_above_one_rejected(self, db):
+        """Test that vr2 confidence above one rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -82,6 +90,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_vr3_weight_above_one_rejected(self, db):
+        """Test that vr3 weight above one rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -90,6 +99,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_vr4_confidence_below_zero_rejected(self, db):
+        """Test that vr4 confidence below zero rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -98,6 +108,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_valid_sentiment_is_accepted(self, db):
+        """Test that valid sentiment is accepted."""
         _insert(
             db,
             "INSERT INTO sentiment_metric VALUES ('m1','equity:NASDAQ:AAPL','Asset',"
@@ -118,6 +129,7 @@ class TestValidationRuleConstraints:
         assert row[0] == -0.6
 
     def test_unknown_asset_class_rejected(self, db):
+        """Test that unknown asset class rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,
@@ -126,6 +138,7 @@ class TestValidationRuleConstraints:
             )
 
     def test_unknown_relation_type_rejected(self, db):
+        """Test that unknown relation type rejected."""
         with pytest.raises(duckdb.Error):
             _insert(
                 db,

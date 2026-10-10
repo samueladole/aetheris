@@ -55,10 +55,12 @@ class ProviderSpec:
 
     @property
     def endpoints(self) -> tuple[str, ...]:
+        """Handle the endpoints."""
         return self.market_endpoints + self.news_endpoints
 
     @property
     def has_minute_limit(self) -> bool:
+        """Return whether the minute limit is present."""
         return self.requests_per_minute is not None
 
     def budget_key(self) -> str:
@@ -168,6 +170,7 @@ class ProviderRegistry:
     """Loads the spec §3.2.1 registry and answers capability questions."""
 
     def __init__(self, providers: Iterable[ProviderSpec] = PROVIDERS) -> None:
+        """Initialise the instance."""
         self._providers: tuple[ProviderSpec, ...] = tuple(providers)
         self._by_name = {p.name: p for p in self._providers}
         self._by_endpoint: dict[tuple[str, str], ProviderSpec] = {
@@ -176,6 +179,7 @@ class ProviderRegistry:
 
     # -- lookup ----------------------------------------------------------
     def get(self, name: str) -> ProviderSpec:
+        """Handle the get."""
         try:
             return self._by_name[name]
         except KeyError as exc:
@@ -184,9 +188,11 @@ class ProviderRegistry:
             ) from exc
 
     def all(self) -> tuple[ProviderSpec, ...]:
+        """Handle the all."""
         return self._providers
 
     def for_endpoint(self, provider: str, endpoint: str) -> ProviderSpec:
+        """Handle the for endpoint."""
         key = (provider, endpoint)
         try:
             return self._by_endpoint[key]

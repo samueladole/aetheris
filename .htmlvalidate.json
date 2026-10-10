@@ -1,0 +1,18 @@
+{
+  "$schema": "https://html-validate.org/schemas/config.json",
+  "extends": ["html-validate:recommended"],
+  "rules": {
+    "no-trailing-whitespace": "off",
+    "doctype-style": "off",
+    "no-raw-characters": "off",
+    "void-style": "off",
+    "text-content": "off",
+    "long-title": "off",
+    "attribute-allowed-values": "off",
+    "element-permitted-content": "off",
+    "valid-id": "off",
+    "valid-autocomplete": "off",
+    "input-attributes": "off",
+    "wcag/h32": "off"
+  }
+}

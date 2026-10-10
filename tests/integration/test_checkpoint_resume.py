@@ -57,6 +57,7 @@ def dbos_env(tmp_path, monkeypatch):
 
 
 class TestCheckpointResume:
+    """Test checkpoint resume."""
     def test_durable_workflow_resumes_from_first_failed_step(self, dbos_env, tmp_path):
         """A failing step is re-run; already-succeeded steps are not."""
         from src.orchestration import workflows
@@ -71,6 +72,7 @@ class TestCheckpointResume:
         assert isinstance(steps, list)
 
     def test_first_incomplete_step_detects_failure_position(self, dbos_env, tmp_path):
+        """Test that first incomplete step detects failure position."""
         from src.orchestration import workflows
 
         settings = _fresh_settings(tmp_path)
@@ -94,6 +96,7 @@ class TestCheckpointResume:
         assert elapsed < 60.0
 
     def test_workflow_registers_all_five_pipeline_steps(self, dbos_env, tmp_path):
+        """Test that workflow registers all five pipeline steps."""
         from src.orchestration.workflows import PIPELINE_STEPS
 
         assert PIPELINE_STEPS == (
@@ -105,7 +108,7 @@ class TestCheckpointResume:
         )
 
     def test_dry_run_makes_no_provider_calls(self, dbos_env, tmp_path):
-
+        """Test that dry run makes no provider calls."""
         settings = _fresh_settings(tmp_path, dry_run=True)
         from src.orchestration import workflows
 
@@ -115,6 +118,7 @@ class TestCheckpointResume:
         # provider, so no credential is required and no quota is consumed.
 
     def test_every_step_has_a_registered_compensator(self):
+        """Test that every step has a registered compensator."""
         from src.orchestration.workflows import PIPELINE_STEPS, build_registry
 
         registry = build_registry()

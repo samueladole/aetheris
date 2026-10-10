@@ -54,24 +54,31 @@ class InMemorySpanExporter:
     MAX_SPANS = 2000
 
     def __init__(self) -> None:
+        """Initialise the instance."""
         self._spans: deque[ReadableSpan] = deque(maxlen=self.MAX_SPANS)
 
     def export(self, spans: list[ReadableSpan]) -> None:
+        """Handle the export."""
         self._spans.extend(spans)
 
     def shutdown(self) -> None:
+        """Handle the shutdown."""
         pass
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Handle the force flush."""
         return True
 
     def snapshot(self) -> list[ReadableSpan]:
+        """Return the current snapshot."""
         return list(self._spans)
 
     def names(self) -> list[str]:
+        """Return the configured set of names."""
         return [s.name for s in self._spans]
 
     def clear(self) -> None:
+        """Handle the clear."""
         self._spans.clear()
 
 

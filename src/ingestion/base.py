@@ -39,6 +39,7 @@ class ProviderUnavailable(Exception):
 
     def __init__(self, provider: str, endpoint: str, status_code: int | None,
                  message: str) -> None:
+        """Initialise the instance."""
         self.provider = provider
         self.endpoint = endpoint
         self.status_code = status_code
@@ -96,6 +97,7 @@ class HttpResponse:
     headers: Mapping[str, str]
 
     def raise_for_unavailable(self, provider: str, endpoint: str) -> None:
+        """Handle the raise for unavailable."""
         if self.status_code == 429:
             raise ProviderUnavailable(
                 provider, endpoint, 429, "free-tier quota exceeded"
@@ -125,13 +127,16 @@ class HttpClient(Protocol):
     def get(
         self, url: str, *, params: Mapping[str, str], headers: Mapping[str, str],
         timeout: float,
-    ) -> HttpResponse: ...
+    ) -> HttpResponse:
+        """Fetch a URL and return the raw response, raising ProviderUnavailable."""
+        ...
 
 
 class RequestsHttpClient:
     """Production HTTP client over :mod:`requests`."""
 
     def __init__(self, session: Any = None) -> None:
+        """Initialise the instance."""
         if session is None:
             import requests
 
@@ -142,6 +147,7 @@ class RequestsHttpClient:
         self, url: str, *, params: Mapping[str, str], headers: Mapping[str, str],
         timeout: float,
     ) -> HttpResponse:
+        """Handle the get."""
         try:
             resp = self._session.get(
                 url, params=dict(params), headers=dict(headers), timeout=timeout
@@ -166,13 +172,19 @@ class ProviderAdapter(Protocol):
 
     provider: str
 
-    def can_handle(self, endpoint: str) -> bool: ...
+    def can_handle(self, endpoint: str) -> bool:
+        """Return whether this adapter serves the given endpoint."""
+        ...
 
     def build_request(
         self, endpoint: str, params: Mapping[str, str]
-    ) -> FetchRequest: ...
+    ) -> FetchRequest:
+        """Build the provider-specific request for one endpoint."""
+        ...
 
-    def headers(self) -> Mapping[str, str]: ...
+    def headers(self) -> Mapping[str, str]:
+        """Return the HTTP headers this adapter needs, including credentials."""
+        ...
 
 
 def to_raw_payload(request: FetchRequest, response: HttpResponse,
