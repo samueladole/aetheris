@@ -59,13 +59,13 @@ forbidden_modules =
     src.cli
 
 [importlinter:contract:observability-is-a-leaf]
-name = Observability is the leaf layer; every other layer may depend on it, never the reverse
+name = Layer ordering: cli composes orchestration, which drives the layers; observability is the leaf
 type = layers
 layers =
+    src.cli
     src.orchestration
     src.ingestion
     src.sentiment
     src.graph
-    src.cli
     src.observability
 exhaustive = false

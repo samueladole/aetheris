@@ -89,20 +89,20 @@ here is the spec's order, not an independent prioritisation.
 
 ### Tests for User Story 1 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T016 [P] [US1] Write failing unit test for the bounded exponential backoff policy in `tests/unit/test_retry.py` asserting `base_delay_ms=1000`, `multiplier=2`, `max_attempts=5`, jitter present, and that a 6th attempt is never made (FR-003)
-- [ ] T017 [P] [US1] Write failing unit test for the compensating-action runner in `tests/unit/test_compensation.py` asserting the `FAILED → COMPENSATING → COMPENSATED` transition and that compensation failure is surfaced, not swallowed
-- [ ] T018 [P] [US1] Write failing integration test for checkpoint resume in `tests/integration/test_checkpoint_resume.py` asserting resume starts at the first failed step and that completed steps are not re-executed (FR-002)
+- [X] T016 [P] [US1] Write failing unit test for the bounded exponential backoff policy in `tests/unit/test_retry.py` asserting `base_delay_ms=1000`, `multiplier=2`, `max_attempts=5`, jitter present, and that a 6th attempt is never made (FR-003)
+- [X] T017 [P] [US1] Write failing unit test for the compensating-action runner in `tests/unit/test_compensation.py` asserting the `FAILED → COMPENSATING → COMPENSATED` transition and that compensation failure is surfaced, not swallowed
+- [X] T018 [P] [US1] Write failing integration test for checkpoint resume in `tests/integration/test_checkpoint_resume.py` asserting resume starts at the first failed step and that completed steps are not re-executed (FR-002)
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Implement the bounded retry policy in `src/orchestration/retry.py` with `base_delay_ms`, `multiplier`, `max_attempts`, jitter, and a per-step activity timeout, all read from settings rather than hard-coded (FR-003)
-- [ ] T020 [P] [US1] Implement the compensation registry and runner in `src/orchestration/compensation.py` mapping each fallible step name to its compensating action
-- [ ] T021 [P] [US1] Implement step-level checkpointing in `src/orchestration/checkpoints.py` on the DBOS SQLite journal, with exactly one checkpoint per workflow step (FR-002)
-- [ ] T022 [US1] Implement workflow registration and invocation in `src/orchestration/workflows.py` covering the five-step sequence from spec §4 (trigger → ingestion → sentiment → graph integration → evaluation) (FR-001)
-- [ ] T023 [US1] Implement the trigger surface in `src/orchestration/triggers.py` accepting either a schedule or an event source (FR-016)
-- [ ] T024 [US1] Wire `aetheris run [--trigger schedule|event] [--dry-run] [--resume WORKFLOW_ID]` into `src/cli/main.py` delegating to `src/orchestration/workflows.py`
-- [ ] T025 [US1] Instrument workflow and step boundaries with OpenTelemetry spans in `src/orchestration/workflows.py`, emitting a span event for every retry, failure, and compensation (FR-017)
-- [ ] T026 [US1] Run `pytest tests/unit/test_retry.py tests/unit/test_compensation.py tests/integration/test_checkpoint_resume.py` until green and record the measured resume latency against SC-002 (< 60 s) in `docs/scale.md`
+- [X] T019 [P] [US1] Implement the bounded retry policy in `src/orchestration/retry.py` with `base_delay_ms`, `multiplier`, `max_attempts`, jitter, and a per-step activity timeout, all read from settings rather than hard-coded (FR-003)
+- [X] T020 [P] [US1] Implement the compensation registry and runner in `src/orchestration/compensation.py` mapping each fallible step name to its compensating action
+- [X] T021 [P] [US1] Implement step-level checkpointing in `src/orchestration/checkpoints.py` on the DBOS SQLite journal, with exactly one checkpoint per workflow step (FR-002)
+- [X] T022 [US1] Implement workflow registration and invocation in `src/orchestration/workflows.py` covering the five-step sequence from spec §4 (trigger → ingestion → sentiment → graph integration → evaluation) (FR-001)
+- [X] T023 [US1] Implement the trigger surface in `src/orchestration/triggers.py` accepting either a schedule or an event source (FR-016)
+- [X] T024 [US1] Wire `aetheris run [--trigger schedule|event] [--dry-run] [--resume WORKFLOW_ID]` into `src/cli/main.py` delegating to `src/orchestration/workflows.py`
+- [X] T025 [US1] Instrument workflow and step boundaries with OpenTelemetry spans in `src/orchestration/workflows.py`, emitting a span event for every retry, failure, and compensation (FR-017)
+- [X] T026 [US1] Run `pytest tests/unit/test_retry.py tests/unit/test_compensation.py tests/integration/test_checkpoint_resume.py` until green and record the measured resume latency against SC-002 (< 60 s) in `docs/scale.md`
 
 ---
 

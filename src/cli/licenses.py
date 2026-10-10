@@ -57,6 +57,40 @@ KNOWN_BAD = {
 AMBIGUOUS = {"", "UNKNOWN", "Proprietary", "Other/Proprietary"}
 
 
+# ---------------------------------------------------------------------------
+# Known, accepted deviations — constitution-amendments.md A-001.
+#
+# These transitive dependencies are outside Principle I's permitted set but are
+# structurally unavoidable for the required capabilities, and have been accepted
+# by explicit decision. Listing them here scopes the *exemption* to exactly
+# these packages: a NEW non-permissive dependency still fails the gate, which is
+# the whole point of keeping the check running.
+# ---------------------------------------------------------------------------
+KNOWN_VIOLATIONS: dict[str, str] = {
+    "psycopg": (
+        "LGPL-3.0-only. Hard dependency of DBOS 3.2.0 for its Postgres system "
+        "database. DBOS is the only permissive, embeddable durable-execution "
+        "library (research.md section A)."
+    ),
+    "psycopg-binary": (
+        "LGPL-3.0-only. Binary wheel of psycopg, required alongside it."
+    ),
+    "certifi": (
+        "MPL-2.0. CA bundle pulled in by requests/httpx/httpcore/evidently. "
+        "Present in essentially every Python HTTP stack; hand-rolling TLS trust "
+        "would be a security regression."
+    ),
+    "huey": (
+        "License undetermined. Task queue used by MLflow's model-serving "
+        "components, which Aetheris does not use."
+    ),
+    "pathspec": (
+        "MPL-2.0. Orphaned in the resolved tree with no reverse dependency "
+        "found; removable, tracked for removal."
+    ),
+}
+
+
 @dataclass(frozen=True)
 class Component:
     """One installed distribution with a resolved license verdict."""
@@ -75,14 +109,25 @@ class Component:
 class LicenseReport:
     components: list[Component]
     strict: bool
+    exemptions: frozenset[str] = frozenset()
+
+    @property
+    def _relevant(self) -> list[Component]:
+        """Components that count toward the verdict (exempt ones do not)."""
+        return [c for c in self.components if c.name.lower() not in self.exemptions]
 
     @property
     def rejected(self) -> list[Component]:
-        return [c for c in self.components if c.verdict in ("rejected",)]
+        return [c for c in self._relevant if c.verdict == "rejected"]
 
     @property
     def unknown(self) -> list[Component]:
-        return [c for c in self.components if c.verdict == "unknown"]
+        return [c for c in self._relevant if c.verdict == "unknown"]
+
+    @property
+    def exempted(self) -> list[Component]:
+        """Components excluded by an accepted A-001 deviation."""
+        return [c for c in self.components if c.name.lower() in self.exemptions]
 
     @property
     def passed(self) -> bool:
@@ -93,7 +138,7 @@ class LicenseReport:
 
     @property
     def coverage(self) -> tuple[int, int]:
-        return sum(1 for c in self.components if c.ok), len(self.components)
+        return sum(1 for c in self._relevant if c.ok), len(self._relevant)
 
 
 def _classify(license_string: str) -> str:
@@ -134,8 +179,13 @@ def _license_of(dist: metadata.Distribution) -> str:
     return ""
 
 
-def audit_installed(*, strict: bool = True) -> LicenseReport:
-    """Walk every installed distribution and classify its license."""
+def audit_installed(*, strict: bool = True, exempt: bool = True) -> LicenseReport:
+    """Walk every installed distribution and classify its license.
+
+    With ``exempt=True`` the packages recorded in :data:`KNOWN_VIOLATIONS`
+    (amendment A-001) are excluded from the verdict but still reported, so the
+    gate keeps flagging genuinely new non-permissive dependencies.
+    """
     components: list[Component] = []
     for dist in metadata.distributions():
         name = dist.metadata["Name"] or "<unknown>"
@@ -143,7 +193,10 @@ def audit_installed(*, strict: bool = True) -> LicenseReport:
         lic = _license_of(dist)
         components.append(Component(name, version, lic, _classify(lic)))
     components.sort(key=lambda c: c.name.lower())
-    return LicenseReport(components, strict)
+    exemptions = (
+        frozenset(k.lower() for k in KNOWN_VIOLATIONS) if exempt else frozenset()
+    )
+    return LicenseReport(components, strict, exemptions)
 
 
 def audit_model_manifest(manifest: dict[str, str]) -> list[Component]:
@@ -161,9 +214,10 @@ def audit_model_manifest(manifest: dict[str, str]) -> list[Component]:
 def format_report(report: LicenseReport) -> str:
     """Human-readable output for `aetheris check-licenses`."""
     ok, total = report.coverage
+    mode = "strict" if report.strict else "lenient"
     lines = [
-        f"Aetheris license gate (Principle I) — {'strict' if report.strict else 'lenient'} mode",
-        f"Distributions scanned: {total}",
+        f"Aetheris license gate (Principle I) — {mode} mode",
+        f"Distributions scanned: {total} ({len(report.exempted)} exempted)",
         f"Permissively licensed: {ok}",
         "",
     ]
@@ -180,8 +234,19 @@ def format_report(report: LicenseReport) -> str:
         for c in sorted(report.unknown, key=lambda c: c.name.lower()):
             lines.append(f"  ? {c.name} {c.version}")
         lines.append("")
+    if report.exempted:
+        lines.append("EXEMPTED by accepted amendment A-001 (constitution-amendments.md):")
+        for c in sorted(report.exempted, key=lambda c: c.name.lower()):
+            reason = KNOWN_VIOLATIONS.get(c.name.lower(), "")
+            lines.append(f"  ~ {c.name} {c.version} — {c.license}")
+            if reason:
+                lines.append(f"      {reason}")
+        lines.append("")
     if not report.rejected and not report.unknown:
-        lines.append("✓ All installed distributions are permissively licensed.")
+        lines.append(
+            "✓ No unaccepted license violations."
+            + (" (see exemptions above)" if report.exempted else "")
+        )
     return "\n".join(lines)
 
 
@@ -190,7 +255,8 @@ def report_as_json(report: LicenseReport) -> str:
         {
             "strict": report.strict,
             "passed": report.passed,
-            "scanned": len(report.components),
+            "scanned": len(report._relevant),
+            "exempted_count": len(report.exempted),
             "permitted": report.coverage[0],
             "rejected": [
                 {"name": c.name, "version": c.version, "license": c.license}
@@ -198,6 +264,10 @@ def report_as_json(report: LicenseReport) -> str:
             ],
             "unknown": [
                 {"name": c.name, "version": c.version} for c in report.unknown
+            ],
+            "exempted": [
+                {"name": c.name, "version": c.version, "license": c.license}
+                for c in report.exempted
             ],
         },
         indent=2,

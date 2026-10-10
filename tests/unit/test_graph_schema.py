@@ -11,9 +11,9 @@ import duckdb
 import pytest
 
 from src.graph.schema import (
-    GraphDatabase,
     AssetClass,
     Frequency,
+    GraphDatabase,
     NodeType,
     RelationType,
     reset_database,
@@ -31,7 +31,7 @@ def db():
 def _now():
     import datetime
 
-    return datetime.datetime.now(datetime.timezone.utc)
+    return datetime.datetime.now(datetime.UTC)
 
 
 def _insert(database: GraphDatabase, sql: str):

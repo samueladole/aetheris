@@ -6,7 +6,7 @@ Verifies FR-015 (immutable, schema-versioned raw payloads) and VR-8
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pytest
 
@@ -72,9 +72,9 @@ class TestRawPayloadStore:
         assert latest.body == b"new"
 
     def test_payload_id_format(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        ts = datetime(2026, 10, 10, 14, 30, tzinfo=timezone.utc)
+        ts = datetime(2026, 10, 10, 14, 30, tzinfo=UTC)
         pid = build_payload_id("fred", "series/observations", "h", ts)
         assert pid == "fred:series/observations:h:2026-10-10T14:30:00+00:00"
 
@@ -107,9 +107,9 @@ class TestTTLCache:
         assert outcome.reason == "absent"
 
     def test_expired_is_a_miss(self, store):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime
 
-        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        past = datetime.now(UTC) - timedelta(hours=2)
         store.store(
             provider="fred",
             endpoint="series/observations",

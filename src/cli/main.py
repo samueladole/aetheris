@@ -29,27 +29,19 @@ def build_parser() -> argparse.ArgumentParser:
         prog=PROG,
         description="Financial Intelligence Knowledge Graph & Sentiment Analysis Engine",
     )
-    parser.add_argument(
-        "--config",
-        metavar="PATH",
-        help="Settings file; defaults to $AETHERIS_CONFIG",
-    )
-    parser.add_argument(
-        "--db", metavar="PATH", help="DuckDB graph file (default ./aetheris.duckdb)"
-    )
-    parser.add_argument(
-        "--raw", metavar="PATH", help="SQLite raw payload file (default ./aetheris-raw.db)"
-    )
-    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
-    parser.add_argument(
-        "--trace", action="store_true", help="Force OpenTelemetry span export"
-    )
+    # Global options. These are ALSO attached to every subparser via a parent
+    # parser so that `aetheris --json run` and `aetheris run --json` both work —
+    # argparse subparsers otherwise require global flags before the command.
+    _add_global_options(parser)
+
+    parent = argparse.ArgumentParser(add_help=False)
+    _add_global_options(parent)
 
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
     # -- check-licenses (T015) -------------------------------------------
     lic = sub.add_parser(
-        "check-licenses", help="Constitution Principle I license gate"
+        "check-licenses", parents=[parent], help="Constitution Principle I license gate"
     )
     lic.add_argument(
         "--strict",
@@ -61,16 +53,64 @@ def build_parser() -> argparse.ArgumentParser:
         "--lenient",
         dest="strict",
         action="store_false",
-        help="Only fail on known non-permissive licenses",
+        help="Only fail on known non-permissive licenses, not undetermined ones",
+    )
+    lic.add_argument(
+        "--no-exemptions",
+        action="store_true",
+        help="Ignore the accepted A-001 deviations and audit every distribution",
     )
 
-    sub.add_parser("status", help="Provider health, quotas, cache ratios")
-    sub.add_parser("version", help="Print version and exit")
+    sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
+
+    # -- run (T024) -----------------------------------------------------
+    run = sub.add_parser("run", parents=[parent], help="Execute the full pipeline durably")
+    run.add_argument(
+        "--trigger",
+        default="schedule",
+        metavar="schedule|event|event:<detail>",
+        help="Trigger source (FR-016)",
+    )
+    run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate configuration and quotas without calling providers",
+    )
+    run.add_argument(
+        "--resume",
+        metavar="WORKFLOW_ID",
+        help="Resume a checkpointed run from its first failed step",
+    )
+
+    sub.add_parser("version", parents=[parent], help="Print version and exit")
     return parser
 
 
+def _add_global_options(target: argparse.ArgumentParser) -> None:
+    """Attach the global CLI options (contracts/cli.md) to a parser."""
+    target.add_argument(
+        "--config",
+        metavar="PATH",
+        help="Settings file; defaults to $AETHERIS_CONFIG",
+    )
+    target.add_argument(
+        "--db", metavar="PATH", help="DuckDB graph file (default ./aetheris.duckdb)"
+    )
+    target.add_argument(
+        "--raw", metavar="PATH", help="SQLite raw payload file (default ./aetheris-raw.db)"
+    )
+    target.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON"
+    )
+    target.add_argument(
+        "--trace", action="store_true", help="Force OpenTelemetry span export"
+    )
+
+
 def _cmd_check_licenses(args: argparse.Namespace) -> int:
-    report = licenses.audit_installed(strict=args.strict)
+    report = licenses.audit_installed(
+        strict=args.strict, exempt=not args.no_exemptions
+    )
     if args.json:
         print(licenses.report_as_json(report))
     else:
@@ -78,9 +118,83 @@ def _cmd_check_licenses(args: argparse.Namespace) -> int:
     return EXIT_OK if report.passed else EXIT_LICENSE
 
 
+def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris run` — start or resume a durable pipeline workflow (T024)."""
+    from src.config.providers import get_registry
+    from src.orchestration import checkpoints, triggers, workflows
+
+    if args.dry_run:
+        from dataclasses import replace
+
+        settings = replace(settings, dry_run=True)
+
+    # Validate the trigger before touching the engine.
+    try:
+        trigger = triggers.parse_trigger(args.trigger)
+    except triggers.TriggerError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+    # Credential pre-check: a live (non-dry) run needs at least one provider.
+    registry = get_registry()
+    if not settings.dry_run:
+        missing = settings.missing_providers(registry.required_credentials())
+        if missing:
+            print(
+                f"error: a live run needs provider credentials; missing: {missing}. "
+                "Set them in the environment, or use --dry-run.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+
+    try:
+        checkpoints.launch(settings)
+        if args.resume:
+            handle = checkpoints.resume(args.resume)
+            action = "resumed"
+        else:
+            import asyncio
+
+            handle = asyncio.run(workflows.start_async(settings, wait=True))
+            action = "started"
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_RUNTIME
+
+    if handle.status == "ERROR":
+        if args.json:
+            import json
+
+            print(json.dumps({"action": action, "workflow_id": handle.workflow_id,
+                              "status": "ERROR",
+                              "error": (handle.result or {}).get("error")}, indent=2))
+        else:
+            print(f"Pipeline FAILED: {handle.workflow_id}")
+            print(f"  error: {(handle.result or {}).get('error')}")
+        return EXIT_RUNTIME
+
+    if args.json:
+        import json
+
+        print(json.dumps({"action": action, "trigger": trigger.describe(),
+                          "workflow_id": handle.workflow_id,
+                          "status": handle.status,
+                          "result": handle.result}, indent=2, default=str))
+    else:
+        print(f"Pipeline {action}: {handle.workflow_id}")
+        print(f"  trigger: {trigger.describe()}")
+        print(f"  status:  {handle.status}")
+        if settings.dry_run:
+            print("  mode:    dry-run (no provider calls)")
+        for step in (handle.result or {}).get("steps", []):
+            print(f"    - {step['name']}: {step['state']}")
+    return EXIT_OK
+
+
 def _cmd_status(args: argparse.Namespace, settings: Settings) -> int:
     """Report configuration and provider posture without contacting providers."""
     from src.config.providers import get_registry
+    from src.orchestration import triggers
 
     registry = get_registry()
     missing = settings.missing_providers(registry.required_credentials())
@@ -89,9 +203,8 @@ def _cmd_status(args: argparse.Namespace, settings: Settings) -> int:
         "db_path": settings.db_path,
         "raw_db_path": settings.raw_db_path,
         "providers_missing_credentials": missing,
-        "redistribution_blockers": [
-            p.name for p in registry.redistribution_blockers()
-        ],
+        "redistribution_blockers": [p.name for p in registry.redistribution_blockers()],
+        "triggers": [t.describe() for t in triggers.iter_triggers()],
         "settings": settings.redacted(),
     }
     if args.json:
@@ -105,6 +218,7 @@ def _cmd_status(args: argparse.Namespace, settings: Settings) -> int:
             "  Redistribution-blocked free tiers: "
             f"{payload['redistribution_blockers'] or 'none'}"
         )
+        print(f"  Trigger sources: {', '.join(payload['triggers'])}")
         if missing:
             print(
                 "  Note: 'aetheris run --dry-run' works without credentials; "
@@ -134,6 +248,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "check-licenses":
             return _cmd_check_licenses(args)
+        if args.command == "run":
+            return _cmd_run(args, settings)
         if args.command == "status":
             return _cmd_status(args, settings)
         if args.command == "version":
