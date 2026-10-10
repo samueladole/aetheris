@@ -48,6 +48,13 @@ jobs:
       - name: Tests
         run: .venv/bin/pytest tests/
 
+      # The README is prose, so it drifts silently. This recomputes the facts
+      # most likely to go stale — test count, CLI surface, import contracts,
+      # reference pages, and every referenced path — and fails if the README
+      # disagrees with the repository.
+      - name: README sync check
+        run: .venv/bin/python scripts/check_readme_sync.py
+
   # Documentation site (feature 001-docs-site-cicd).
   # Separate job: it needs the `docs` extra plus Node tooling, and a failure
   # here must not be confused with a pipeline-code failure.
