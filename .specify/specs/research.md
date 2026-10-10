@@ -1,4 +1,4 @@
-# Phase 0 Research: Aetheris / NexusCap
+# Phase 0 Research: Aetheris
 
 **Date**: 2026-10-10 | **Spec**: [`./spec.md`](./spec.md) | **Plan**: [`./plan.md`](./plan.md)
 

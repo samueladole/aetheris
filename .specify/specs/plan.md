@@ -1,4 +1,4 @@
-# Implementation Plan: Aetheris / NexusCap — Financial Intelligence Knowledge Graph & Sentiment Engine
+# Implementation Plan: Aetheris — Financial Intelligence Knowledge Graph & Sentiment Engine
 
 **Branch**: `specs` | **Date**: 2026-10-10 | **Spec**: [`./spec.md`](./spec.md)
 

@@ -1,4 +1,4 @@
-# Data Model: Aetheris / NexusCap
+# Data Model: Aetheris
 
 **Date**: 2026-10-10 | **Spec**: [`./spec.md`](./spec.md) | **Plan**: [`./plan.md`](./plan.md)
 **Research**: [`./research.md`](./research.md)

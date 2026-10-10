@@ -1,4 +1,4 @@
-# Project Specification: Financial Intelligence Knowledge Graph & Sentiment Analysis Engine (Aetheris / NexusCap)
+# Project Specification: Financial Intelligence Knowledge Graph & Sentiment Analysis Engine (Aetheris)
 
 ## 1. Project Vision & Core Principles
 This project implements an automated, modular, and fault-tolerant financial intelligence pipeline. It ingests macroeconomic data, asset prices (stocks, crypto, forex), and financial news, performs advanced sentiment analysis, and structures these entities into a dynamic Knowledge Graph.

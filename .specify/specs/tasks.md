@@ -1,4 +1,4 @@
-# Tasks: Aetheris / NexusCap — Financial Intelligence Knowledge Graph & Sentiment Engine
+# Tasks: Aetheris — Financial Intelligence Knowledge Graph & Sentiment Engine
 
 **Input**: Design documents from `/specs/spec.md`, `/specs/plan.md`, `/specs/research.md`, `/specs/data-model.md`, `/specs/contracts/`, `/specs/quickstart.md`
 
