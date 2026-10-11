@@ -62,7 +62,28 @@ CHECKS: list[dict[str, object]] = [
         "numeric": True,
         "hint": "Count distinct FR- ids in .specify/specs/spec.md.",
     },
+    {
+        "name": "docs-site task progress",
+        "pattern": r"Documentation site \| (\d+) / (\d+)",
+        "actual": lambda: _docs_task_progress(),
+        "tuple": True,
+        "hint": "Read the checked/total task counts in the 001-docs-site-cicd task file.",
+    },
 ]
+
+
+def _docs_task_progress() -> tuple[int, int]:
+    """Checked and total task counts in the docs-site task breakdown."""
+    path = REPO / ".specify" / "specs" / "001-docs-site-cicd" / "tasks.md"
+    if not path.is_file():
+        raise SyncError(f"{path} is missing")
+    checked = total = 0
+    for line in path.read_text().splitlines():
+        if line.startswith("- [X] T"):
+            checked += 1
+        if line.startswith("- [") and " T" in line:
+            total += 1
+    return checked, total
 
 
 def _requirement_ids() -> int:
@@ -203,9 +224,17 @@ def main() -> int:
             continue
         documented = found.group(1)
         actual = check["actual"]()  # type: ignore[operator]
-        # Zero-padded ids like FR-021 must compare numerically, so "021" is not
-        # reported as disagreeing with 21.
-        if check.get("numeric"):
+        # A "<checked> / <total>" claim is compared as a pair, and zero-padded
+        # ids like FR-021 compare numerically so "021" is not reported against 21.
+        if check.get("tuple"):
+            groups = found.groups()
+            if len(groups) != 2:
+                failures.append(
+                    f"[{name}] README does not state a checked/total pair. {check['hint']}"
+                )
+                continue
+            same = tuple(int(g) for g in groups) == tuple(actual)
+        elif check.get("numeric"):
             same = documented.isdigit() and int(documented) == int(actual)
         else:
             same = str(actual) == str(documented)

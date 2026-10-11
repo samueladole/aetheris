@@ -17,7 +17,7 @@ complete, and the durable-execution and ingestion layers are implemented.
 | Work item | Progress | Tasks |
 |---|---|---|
 | Pipeline (`src/`) | 41 / 81 | durable execution, ingestion adapters |
-| Documentation site | 12 / 34 | site builds, API reference generates, gates enforce |
+| Documentation site | 34 / 34 | complete — builds, deploys, gates enforce |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
 and **fails the build if any factual claim here is stale**. If you change
@@ -178,8 +178,9 @@ Rejected on licence grounds:
 │   ├── index.md · installation.md
 │   ├── usage/                   # CLI reference, accessibility
 │   ├── stylesheets/ · overrides/
+│   ├── validation.md            # recorded gate results
 │   └── reference/               # GENERATED — never hand-edited
-├── scripts/                     # build and maintenance tooling
+├── scripts/                     # build, maintenance, and gate tooling
 ├── src/
 │   ├── config/                  # typed settings, provider registry
 │   ├── orchestration/           # workflows, checkpoints, retry, compensation
@@ -293,7 +294,8 @@ Generated reference: `aetheris docs build` then open `site/reference/`.
 ## Documentation site
 
 MkDocs + Material, with the API reference **generated from source docstrings**.
-Navigation is generated too, so adding a module requires no manual edit.
+Navigation is generated too, so adding a module requires no manual edit. The
+site publishes automatically to GitHub Pages on every push to `main`.
 
 ```bash
 pip install -e ".[docs]"
@@ -310,14 +312,23 @@ aetheris docs build                    # build + run all gates
 |---|---|---|
 | 1 | Docstring coverage | every public entity documented |
 | 2 | Site build | `--strict`; any warning fails |
-| 3 | Landmark labels | fixes duplicate `aria-label`s from the theme |
-| 4 | Accessibility — structural | `html-validate` |
-| 5 | Accessibility — rendered | computed contrast, heading order |
+| 3 | Built-HTML repair | fixes duplicate `aria-label`s and missing `<th scope>` that the theme and generator introduce |
+| 4 | Secret scan | no credential in the published output — the site is public |
+| 5 | Accessibility — structural | `html-validate` |
+| 6 | Accessibility — rendered | computed contrast, heading order |
 
-**Read [`docs/usage/accessibility.md`](docs/usage/accessibility.md) before trusting
-an accessibility claim.** It lists exactly which WCAG criteria are verified and
-which are *not*, including three focus criteria that could not be checked
-reliably against the theme.
+**Deployment** preserves the two properties that fail silently when wrong: it
+triggers on `main` only, and the publish job declares `needs: build`, so a
+failed build never reaches the live site. Both are asserted by
+`tests/contract/test_docs_workflow.py`.
+
+**Read [`docs/usage/accessibility.md`](docs/usage/accessibility.md) before
+trusting an accessibility claim.** It lists exactly which WCAG criteria are
+verified and which are *not* — including three focus criteria that could not be
+checked reliably against the theme, and two theme defects. Rules outside the
+covered list are *unverified, not compliant*.
+
+Validation results are recorded in [`docs/validation.md`](docs/validation.md).
 
 ---
 
@@ -494,13 +505,19 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 pytest tests/                              # unit, contract, integration
 ruff check src/ tests/ scripts/            # lint + docstring gate
 lint-imports                               # Principle II boundaries
-aetheris check-licenses --lenient          # Principle I
-aetheris docs build                        # all five documentation gates
+aetheris check-licenses --lenient          # Principle I (Python)
+node scripts/check_licenses.js             # Principle I (Node — docs toolchain)
+aetheris docs build                        # all six documentation gates
+python scripts/check_readme_sync.py        # this README is up to date
 ```
 
 Pre-commit expectations: `ruff` and the docstring gate (`D1xx` rules) must pass,
 because the documentation site generates from those docstrings and a missing one
 fails the build.
+
+**Two licence gates, not one.** The Python gate walks installed Python
+distributions; the Node gate walks `node_modules`. Neither alone covers the
+toolchain, and a gate that silently skips half of it is not a gate.
 
 ---
 
