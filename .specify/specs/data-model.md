@@ -51,7 +51,7 @@ Represents one scored text item. Highest-volume node type (~50k–250k/day at pl
 
 | Field | Type | Rule |
 |---|---|---|
-| `metric_id` | `VARCHAR` (PK) | `${entity_id}:${source_reference}:${text_hash}` |
+| `metric_id` | `VARCHAR` (PK) | `${entity_id}:${source_reference}:${text_hash}:${model_id}@${revision}` |
 | `entity_id` | `VARCHAR` | Resolves to an `Asset.asset_id` or `MacroIndicator.indicator_code` |
 | `score` | `DOUBLE` | **Constraint `BETWEEN -1.0 AND 1.0`** — signed polarity |
 | `confidence` | `DOUBLE` | **Constraint `BETWEEN 0.0 AND 1.0`** — calibrated (temperature-scaled) |
@@ -62,8 +62,12 @@ Represents one scored text item. Highest-volume node type (~50k–250k/day at pl
 | `created_at` | `TIMESTAMP` | UTC ingest time |
 
 **Uniqueness**: `metric_id`. Re-scoring the same text with a different model produces a *distinct*
-row (different `model_id`), preserving lineage rather than overwriting history — this is the
-"data harmonization across disparate frequencies" requirement of FR-013.
+row, preserving lineage rather than overwriting history — this is the "data harmonization across
+disparate frequencies" requirement of FR-013.
+
+The model's id and revision are part of `metric_id` precisely to make that true: two models scoring
+identical text produce different scores, and without the model in the identity the second write
+would silently overwrite the first.
 
 **Validation**: `score`/`confidence` bounds enforced by DB constraints *and* by
 `src/sentiment/schema.py` before write; uncalibrated softmax output must never reach the graph.

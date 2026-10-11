@@ -154,20 +154,20 @@ here is the spec's order, not an independent prioritisation.
 
 ### Tests for User Story 3 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T043 [P] [US3] Write failing contract test for the sentiment payload schema in `tests/contract/test_sentiment_schema.py` covering all seven rejection rules in `contracts/sentiment-schema.md` (out-of-range score, out-of-range or uncalibrated confidence, naive timestamp, text over 8192 chars, non-permissive model license, unresolvable `entity_id`, duplicate `metric_id` with identical `model.revision`)
-- [ ] T044 [P] [US3] Write failing unit test for the polarity mapping in `tests/unit/test_analyzer.py` asserting `polarity = P(positive) − P(negative)` and `confidence = max(P(pos), P(neg), P(neu))` on CPU (FR-009, FR-010)
-- [ ] T045 [P] [US3] Write failing unit test for temperature scaling in `tests/unit/test_calibration.py` asserting that calibrated confidence stays within [0.0, 1.0] and differs from the raw softmax maximum (VR-2)
+- [X] T043 [P] [US3] Write failing contract test for the sentiment payload schema in `tests/contract/test_sentiment_schema.py` covering all seven rejection rules in `contracts/sentiment-schema.md` (out-of-range score, out-of-range or uncalibrated confidence, naive timestamp, text over 8192 chars, non-permissive model license, unresolvable `entity_id`, duplicate `metric_id` with identical `model.revision`)
+- [X] T044 [P] [US3] Write failing unit test for the polarity mapping in `tests/unit/test_analyzer.py` asserting `polarity = P(positive) − P(negative)` and `confidence = max(P(pos), P(neg), P(neu))` on CPU (FR-009, FR-010)
+- [X] T045 [P] [US3] Write failing unit test for temperature scaling in `tests/unit/test_calibration.py` asserting that calibrated confidence stays within [0.0, 1.0] and differs from the raw softmax maximum (VR-2)
 
 ### Implementation for User Story 3
 
-- [ ] T046 [US3] Implement the pinned model manifest in `src/sentiment/models.py` recording `id`, `revision` hash, and `license` for the primary `AnkitAI/FinSense-ModernBERT-Financial-News-Sentiment-Analysis`, the fallback `mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis`, and the `vaderSentiment` baseline, rejecting any model whose license is not in `{Apache-2.0, MIT, BSD-3-Clause}` (V3 gate)
-- [ ] T047 [US3] Implement CPU inference with the polarity/confidence mapping in `src/sentiment/analyzer.py`, using `torch.set_num_threads` and batched headlines, with no GPU requirement
-- [ ] T048 [P] [US3] Implement the temperature-scaling calibration module in `src/sentiment/calibration.py`, fitted on a held-out Financial PhraseBank `sentences_allagree` split
-- [ ] T049 [US3] Implement the payload builder and validator in `src/sentiment/schema.py` producing `schema_version` 1.0 payloads with the full `model` lineage block, `calibration` block, and `provenance` block per `contracts/sentiment-schema.md` (FR-010)
-- [ ] T050 [P] [US3] Add a tiny deterministic stub model fixture in `tests/fixtures/models/` so CI inference runs without downloading multi-hundred-megabyte weights
-- [ ] T051 [US3] Wire `aetheris score [--entity ENTITY_ID] [--since ISO8601] [--model MODEL_ID]` into `src/cli/main.py`, exiting with code 3 when `--model` is absent from `src/sentiment/models.py`
-- [ ] T052 [US3] Instrument model inference with an OpenTelemetry span per scored item in `src/sentiment/analyzer.py` (FR-017)
-- [ ] T053 [US3] Run `pytest tests/contract/test_sentiment_schema.py tests/unit/test_analyzer.py tests/unit/test_calibration.py` until green and confirm no uncalibrated confidence reaches the payload (VR-2)
+- [X] T046 [US3] Implement the pinned model manifest in `src/sentiment/models.py` recording `id`, `revision` hash, and `license` for the primary `AnkitAI/FinSense-ModernBERT-Financial-News-Sentiment-Analysis`, the fallback `mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis`, and the `vaderSentiment` baseline, rejecting any model whose license is not in `{Apache-2.0, MIT, BSD-3-Clause}` (V3 gate)
+- [X] T047 [US3] Implement CPU inference with the polarity/confidence mapping in `src/sentiment/analyzer.py`, using `torch.set_num_threads` and batched headlines, with no GPU requirement
+- [X] T048 [P] [US3] Implement the temperature-scaling calibration module in `src/sentiment/calibration.py`, fitted on a held-out Financial PhraseBank `sentences_allagree` split
+- [X] T049 [US3] Implement the payload builder and validator in `src/sentiment/schema.py` producing `schema_version` 1.0 payloads with the full `model` lineage block, `calibration` block, and `provenance` block per `contracts/sentiment-schema.md` (FR-010)
+- [X] T050 [P] [US3] Add a tiny deterministic stub model fixture in `tests/fixtures/models/` so CI inference runs without downloading multi-hundred-megabyte weights
+- [X] T051 [US3] Wire `aetheris score [--entity ENTITY_ID] [--since ISO8601] [--model MODEL_ID]` into `src/cli/main.py`, exiting with code 3 when `--model` is absent from `src/sentiment/models.py`
+- [X] T052 [US3] Instrument model inference with an OpenTelemetry span per scored item in `src/sentiment/analyzer.py` (FR-017)
+- [X] T053 [US3] Run `pytest tests/contract/test_sentiment_schema.py tests/unit/test_analyzer.py tests/unit/test_calibration.py` until green and confirm no uncalibrated confidence reaches the payload (VR-2)
 
 **Checkpoint**: User Stories 1–3 work independently — raw news text becomes contract-valid, calibrated sentiment.
 

@@ -240,7 +240,7 @@ aetheris run --trigger schedule
 
 ## CLI
 
-**6 commands**: `run`, `ingest`, `status`, `version`, `check-licenses`, and
+**7 commands**: `run`, `ingest`, `score`, `status`, `version`, `check-licenses`, and
 `docs`. The `query` command is specified but not yet implemented (task T064).
 
 Global options (`--config`, `--db`, `--raw`, `--json`, `--trace`) work either
@@ -250,6 +250,7 @@ before or after the subcommand.
 |---|---|
 | `aetheris run` | Execute the durable pipeline. `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
 | `aetheris ingest` | Run one adapter. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
+| `aetheris score` | Score text. `--entity`, `--model`, `--temperature`, `--text` |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
 | `aetheris status` | Provider health, quotas, cache hit ratio, workflow state |
@@ -263,31 +264,49 @@ or [`cli.md`](.specify/specs/contracts/cli.md).
 
 ## Python API
 
-The graph layer exposes a **read-only, in-process** API — no network service, no
-auth surface (clarification: no web service is in scope).
+### Working today — sentiment
 
 ```python
+from src.sentiment.analyzer import score_text
+from src.sentiment.schema import build_payload
+
+# Score text and get a signed polarity plus calibrated confidence.
+# `float(polarity)` works because Polarity *is* a float.
+polarity, probabilities, model = score_text(
+    "Company beats expectations as revenue surges", temperature=2.0
+)
+print(float(polarity), polarity.confidence)
+```
+
+Polarity is signed (`P(pos) - P(neg)`) and confidence is **temperature-scaled** — a
+raw transformer softmax is systematically overconfident, so passing it through
+uncalibrated would violate VR-2. Model choice is gated by a licence manifest: any
+model not listed in `src/sentiment/models.py` is refused rather than trusted.
+
+### Specified, not yet implemented — graph
+
+The graph layer will expose a **read-only, in-process** API (no network service, no
+auth surface — clarification: no web service is in scope):
+
+```python
+# Not yet importable: src/graph/api.py is tasks T059–T063 (US4).
 from src.graph.api import get_entity, sentiment_for, top_influencers
 from datetime import datetime, timezone
 
-# Point-in-time sentiment for one asset
 points = sentiment_for(
     "equity:NASDAQ:AAPL",
     start=datetime(2026, 10, 1, tzinfo=timezone.utc),
     end=datetime(2026, 10, 15, tzinfo=timezone.utc),
     min_confidence=0.7,
 )
-
-# Strongest macro influences on an asset
-for edge in top_influencers("equity:NASDAQ:AAPL", limit=5):
-    print(edge.src_node, edge.weight, edge.confidence)
 ```
 
 Contracts: [`graph-api.md`](.specify/specs/contracts/graph-api.md) ·
 [`sentiment-schema.md`](.specify/specs/contracts/sentiment-schema.md) ·
 [`adapter-protocol.md`](.specify/specs/contracts/adapter-protocol.md).
 
-Generated reference: `aetheris docs build` then open `site/reference/`.
+Generated reference for everything implemented: `aetheris docs build`, then open
+`site/reference/`.
 
 ---
 
@@ -499,7 +518,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **194 tests pass** · **20 API reference pages**
+**5 import contracts kept** · **268 tests pass** · **24 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

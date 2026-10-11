@@ -12,6 +12,7 @@ import argparse
 import subprocess
 import sys
 from collections.abc import Sequence
+from datetime import UTC
 from typing import Any
 
 from src.cli import licenses
@@ -65,6 +66,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
+
+    # -- score (T051) --------------------------------------------------
+    sc = sub.add_parser(
+        "score", parents=[parent], help="Score ingested news text with the sentiment model"
+    )
+    sc.add_argument("--entity", metavar="ENTITY_ID", help="Limit to one entity")
+    sc.add_argument("--since", metavar="ISO8601", help="Only score text from this time")
+    sc.add_argument(
+        "--model",
+        default="stub",
+        help="Model id from the permitted manifest (default: stub)",
+    )
+    sc.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Calibration temperature for confidence (VR-2)",
+    )
+    sc.add_argument(
+        "--text",
+        action="append",
+        default=[],
+        metavar="TEXT",
+        help="Score literal text instead of reading ingested payloads (repeatable)",
+    )
 
     # -- docs (T009) ---------------------------------------------------
     doc = sub.add_parser(
@@ -309,6 +335,107 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
 
     print("Documentation built into site/")
     return EXIT_OK
+
+
+def _cmd_score(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris score` — turn ingested news text into sentiment payloads (T051)."""
+    from datetime import datetime
+
+    from src.observability.telemetry import init_telemetry, span
+    from src.sentiment.analyzer import score_text
+    from src.sentiment.models import ModelManifestError
+    from src.sentiment.schema import (
+        Calibration,
+        Provenance,
+        build_payload,
+    )
+
+    init_telemetry(settings)
+
+    # Refuse an unlisted model BEFORE scoring anything: an absent model has no
+    # verified license (Principle I, V3).
+    if args.model != "stub":
+        from src.sentiment.models import get as get_model
+
+        try:
+            get_model(args.model)
+        except ModelManifestError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_LICENSE
+
+    if args.temperature <= 0:
+        print("error: --temperature must be positive", file=sys.stderr)
+        return EXIT_USAGE
+
+    if not args.text:
+        print(
+            "error: no text to score. Pass --text '...' (repeatable), or run "
+            "`aetheris ingest` first so there are payloads to read.",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+
+    entity = args.entity or "equity:UNKNOWN:UNLISTED"
+    if args.since:
+        # Literal --text carries no timestamps, so --since cannot filter it.
+        # It is accepted here for contract compatibility with the future
+        # payload-reading path (task T065).
+        try:
+            datetime.fromisoformat(args.since)
+        except ValueError as exc:
+            print(f"error: --since is not ISO-8601: {exc}", file=sys.stderr)
+            return EXIT_USAGE
+
+    payloads = []
+    with span(
+        "sentiment.score",
+        **{"aetheris.model": args.model, "aetheris.entity": entity},
+    ):
+        for index, text in enumerate(args.text):
+            # T052: one span per inference, so slow scores are attributable.
+            with span("sentiment.inference", **{"aetheris.index": index}):
+                polarity, _probs, spec = score_text(
+                    text, model_id=args.model, temperature=args.temperature
+                )
+
+            payload = build_payload(
+                entity_id=entity,
+                polarity_score=float(polarity),
+                confidence=polarity.confidence,
+                timestamp=datetime.now(UTC),
+                source_reference=f"cli:text:{index}",
+                model=spec,
+                calibration=Calibration(
+                    method="temperature_scaling",
+                    temperature=args.temperature,
+                    calibrated_on="cli",  # fitted value recorded at deploy time
+                ),
+                provenance=Provenance(
+                    payload_id=f"cli:text:{index}",
+                    text_hash=_hash(text),
+                    text_length_chars=len(text),
+                ),
+            )
+            payloads.append(payload)
+
+    if args.json:
+        import json
+
+        print(json.dumps(payloads, indent=2))
+    else:
+        for payload in payloads:
+            print(
+                f"{payload['entity_id']} score={payload['polarity_score']:+.4f} "
+                f"confidence={payload['confidence']:.4f} "
+                f"model={payload['model']['id']}"
+            )
+    return EXIT_OK
+
+
+def _hash(text: str) -> str:
+    from src.sentiment.schema import text_hash
+
+    return text_hash(text)
 
 
 def _parse_params(pairs: list[str]) -> dict[str, str]:
@@ -582,6 +709,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_run(args, settings)
         if args.command == "ingest":
             return _cmd_ingest(args, settings)
+        if args.command == "score":
+            return _cmd_score(args, settings)
         if args.command == "docs":
             return _cmd_docs(args, settings)
         if args.command == "status":
