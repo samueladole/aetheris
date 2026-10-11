@@ -98,7 +98,7 @@ the build fails naming the file and rule.
 - [X] T020 [US2] Verify module coverage by asserting in `tests/contract/test_api_reference.py` that every module file under `src/` has a corresponding page in the built site, so no layer can be silently omitted (FR-009)
 - [X] T021 [US2] Add a private-name exclusion assertion to `tests/contract/test_api_reference.py` confirming no generated page renders an entity whose name begins with `_`, verifying the `filters: ["!^_"]` configuration works without a per-module allowlist (FR-008)
 - [X] T022 [US2] Add a determinism assertion to `tests/contract/test_api_reference.py` checking that two consecutive `aetheris docs build` runs over unchanged source produce byte-identical output in `site/reference/`
-- [ ] T023 [US2] Run the §4–§6 scenarios in `.specify/specs/001-docs-site-cicd/quickstart.md`, remove every temporary probe file created from `src/graph/`, and record the result in `docs/validation.md`
+- [X] T023 [US2] Run the §4–§6 scenarios in `.specify/specs/001-docs-site-cicd/quickstart.md`, remove every temporary probe file created from `src/graph/`, and record the result in `docs/validation.md`
 
 **Checkpoint**: User Stories 1 AND 2 work independently — the API reference regenerates itself and cannot silently drift.
 
@@ -133,7 +133,7 @@ updates; then force a failure and confirm the previously published site keeps se
 **Purpose**: Improvements that affect multiple user stories, plus the gates that keep the feature honest.
 
 - [X] T030 [P] Update `README.md` at the repository root to link the published documentation site and add a short "Documentation" section explaining how to build and preview locally via `aetheris docs serve`
-- [ ] T031 [P] Add the newly permitted documentation dependencies to the license gate by running `aetheris check-licenses --lenient` and recording that `mkdocs`, `mkdocs-material`, `mkdocstrings`, `mkdocs-gen-files`, `mkdocs-literate-nav`, `mkdocs-section-index`, `html-validate`, and `@playwright/test` report no *unaccepted* violation, adding any newly-flagged package to `src/cli/licenses.py` with its justification (FR-015)
+- [X] T031 [P] Add the newly permitted documentation dependencies to the license gate by running `aetheris check-licenses --lenient` and recording that `mkdocs`, `mkdocs-material`, `mkdocstrings`, `mkdocs-gen-files`, `mkdocs-literate-nav`, `mkdocs-section-index`, `html-validate`, and `@playwright/test` report no *unaccepted* violation, adding any newly-flagged package to `src/cli/licenses.py` with its justification (FR-015)
 - [X] T032 [P] Document the contrast palette in `docs/stylesheets/extra.css` with the measured foreground/background pairs and their contrast ratios, so the rendered accessibility gate's thresholds are justified rather than guessed
 - [X] T033 [P] Record the covered WCAG rule ids in `docs/usage/accessibility.md`, stating plainly which rules the bespoke checker verifies and that rules outside that list are unverified rather than compliant, per the accepted trade-off in `plan.md` Complexity Tracking
 - [X] T034 Run the full `quickstart.md` validation from §0 through §10 and record the outcome, confirming SC-001 through SC-007 and explicitly noting that SC-007 must be verified against the covered-rule list rather than assumed

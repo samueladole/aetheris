@@ -30,8 +30,17 @@ jobs:
       # non-permissive (see constitution-amendments.md A-001). Strict mode also
       # fails on *undetermined* licenses, which would block CI on huey.
       # Flip back to --strict once A-001 is ratified.
-      - name: License gate (Principle I)
+      - name: License gate (Principle I) — Python
         run: .venv/bin/aetheris check-licenses --lenient
+
+      # The Python gate cannot see Node packages, and the documentation
+      # accessibility gates depend on two of them (html-validate,
+      # @playwright/test). A gate that silently skips half the toolchain is
+      # not a gate.
+      - name: License gate (Principle I) — Node
+        run: |
+          npm ci --ignore-scripts
+          node scripts/check_licenses.js
 
       # Principle II: fails on any layer boundary violation
       - name: Import contracts (Principle II)
