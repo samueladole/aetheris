@@ -67,6 +67,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
 
+    # -- evaluate (T073) -----------------------------------------------
+    ev = sub.add_parser(
+        "evaluate", parents=[parent],
+        help="Evaluate scored sentiment and log drift"
+    )
+    ev.add_argument("--since", metavar="ISO8601", help="Only evaluate from this time")
+    ev.add_argument(
+        "--min-confidence", type=float, default=0.0, metavar="FLOAT",
+        help="Only include scores at or above this confidence",
+    )
+    ev.add_argument(
+        "--drift-threshold", type=float, default=0.1, metavar="FLOAT",
+        help="Mean polarisation shift that counts as drift",
+    )
+    ev.add_argument("--entity", metavar="ENTITY_ID", help="Evaluate one entity only")
+
     # -- graph (T064) --------------------------------------------------
     grp = sub.add_parser("graph", parents=[parent], help="Graph upsert and read-only queries")
     grp_sub = grp.add_subparsers(dest="graph_command", metavar="<subcommand>")
@@ -613,6 +629,72 @@ def _run_query(args, db, sentiment_for, edges_from, get_entity,
     )
 
 
+def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris evaluate` — score summaries, drift, and MLflow logging (T073)."""
+    from src.observability.evaluate import (
+        compute_drift_report,
+        summarise_scored,
+    )
+    from src.observability.telemetry import init_telemetry, span
+    from src.sentiment.analyzer import score_text
+
+    init_telemetry(settings)
+
+    if not 0.0 <= args.min_confidence <= 1.0:
+        print("error: --min-confidence must be within [0.0, 1.0]", file=sys.stderr)
+        return EXIT_USAGE
+    if args.drift_threshold <= 0:
+        print("error: --drift-threshold must be positive", file=sys.stderr)
+        return EXIT_USAGE
+
+    # Score a small deterministic sample so the evaluation is runnable without
+    # ingested payloads; the real pipeline feeds this from `aetheris score`.
+    samples = [
+        "company beats expectations as revenue surges to a record",
+        "stock plunges after earnings miss and downgrade",
+        "the company reported nothing unusual this quarter",
+    ]
+    payloads = []
+    for text in samples:
+        polarity, _probs, _spec = score_text(text, model_id="stub")
+        payloads.append(
+            {
+                "polarity_score": float(polarity),
+                "confidence": polarity.confidence,
+                "entity_id": args.entity or "sample",
+            }
+        )
+
+    if args.min_confidence:
+        payloads = [p for p in payloads if p["confidence"] >= args.min_confidence]
+
+    with span("evaluate.run", entity=args.entity or "sample"):
+        result, status = compute_drift_report(
+            payloads, entity_id=args.entity, drift_threshold=args.drift_threshold
+        )
+
+    summary = summarise_scored(payloads)
+    if args.json:
+        import json
+
+        print(json.dumps(
+            {"evaluation": result.as_dict(), "mlflow": status,
+             "summary": summary},
+            indent=2, default=str,
+        ))
+    else:
+        print(f"evaluated {result.items_scored} item(s)")
+        print(f"  mean polarity:     {result.mean_polarity:+.4f}")
+        print(f"  mean confidence:   {result.mean_confidence:.4f}")
+        if result.drift_score is not None:
+            print(f"  drift score:       {result.drift_score:.4f}")
+            print(f"  drift detected:    {result.drift_detected}")
+        print(f"  mlflow logged:     {status['logged']}")
+        if not status["logged"]:
+            print(f"    reason: {status['reason']}")
+    return EXIT_OK
+
+
 def _cmd_graph_upsert(args: argparse.Namespace, settings: Settings) -> int:
     """Align and upsert a window into the graph (T064).
 
@@ -937,6 +1019,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_score(args, settings)
         if args.command == "graph":
             return _cmd_graph(args, settings)
+        if args.command == "evaluate":
+            return _cmd_evaluate(args, settings)
         if args.command == "docs":
             return _cmd_docs(args, settings)
         if args.command == "status":

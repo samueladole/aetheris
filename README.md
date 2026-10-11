@@ -16,7 +16,7 @@ complete, and the durable-execution and ingestion layers are implemented.
 
 | Work item | Progress | Tasks |
 |---|---|---|
-| Pipeline (`src/`) | 65 / 81 | durable execution, ingestion, sentiment, graph |
+| Pipeline (`src/`) | 73 / 81 | durable execution, ingestion, sentiment, graph |
 | Documentation site | 34 / 34 | complete — builds, deploys, gates enforce |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
@@ -240,8 +240,8 @@ aetheris run --trigger schedule
 
 ## CLI
 
-**8 commands**: `run`, `ingest`, `score`, `graph`, `status`, `version`, `check-licenses`,
-and `docs`. The `query` command is specified but not yet implemented (task T064).
+**9 commands**: `run`, `ingest`, `score`, `graph`, `evaluate`, `status`, `version`,
+`check-licenses`, and `docs`. The `query` command is specified but not yet implemented (task T064).
 
 Global options (`--config`, `--db`, `--raw`, `--json`, `--trace`) work either
 before or after the subcommand.
@@ -252,6 +252,7 @@ before or after the subcommand.
 | `aetheris ingest` | Run one adapter. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
 | `aetheris score` | Score text. `--entity`, `--model`, `--temperature`, `--text` |
 | `aetheris graph` | `upsert` (align + idempotent write) and read-only `query` |
+| `aetheris evaluate` | Score summaries, drift, MLflow logging |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
 | `aetheris status` | Provider health, quotas, cache hit ratio, workflow state |
@@ -522,7 +523,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **347 tests pass** · **28 API reference pages**
+**5 import contracts kept** · **386 tests pass** · **29 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

@@ -142,18 +142,36 @@ def score_text(
     ``model_id`` of ``"stub"`` (the default) uses the deterministic lexical
     backend so the function is usable in tests and dry runs. Any other id must
     be in `src/sentiment/models.py`, which is the licence-enforcement point.
+
+    Opens a span per inference so constitution §IV's "every sentiment model
+    inference" holds at the engine layer — not only when driven through the CLI,
+    which is what the trace-coverage test asserts.
     """
-    if model_id == "stub":
-        spec = ModelSpec(id="stub", revision="0", license="MIT", role="test")
-        probabilities = StubModel(spec).predict(text)
-    else:
-        spec = get_model(model_id)
-        probabilities = _predict_with_weights(text, spec)
+    from src.observability.telemetry import annotate, span
 
-    from src.sentiment.calibration import TemperatureScaler
+    with span(
+        "sentiment.inference",
+        model=model_id,
+        temperature=temperature,
+        text_length=len(text or ""),
+    ):
+        if model_id == "stub":
+            spec = ModelSpec(id="stub", revision="0", license="MIT", role="test")
+            probabilities = StubModel(spec).predict(text)
+        else:
+            spec = get_model(model_id)
+            probabilities = _predict_with_weights(text, spec)
 
-    calibrated = TemperatureScaler(temperature=temperature).apply(probabilities)
-    return score_from_probs(*calibrated), probabilities, spec
+        from src.sentiment.calibration import TemperatureScaler
+
+        calibrated = TemperatureScaler(temperature=temperature).apply(probabilities)
+        result = score_from_probs(*calibrated)
+        annotate(
+            polarity=float(result),
+            confidence=result.confidence,
+            model_id=spec.id,
+        )
+        return result, probabilities, spec
 
 
 def _predict_with_weights(text: str, spec: ModelSpec) -> list[float]:

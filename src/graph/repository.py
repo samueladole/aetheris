@@ -27,6 +27,7 @@ from src.graph.schema import (
     RelationType,
     SentimentMetric,
 )
+from src.observability.metrics import get_metrics
 
 UTC = UTC
 
@@ -74,27 +75,30 @@ class GraphRepository:
     # ------------------------------------------------------------------
     def upsert_asset(self, asset: Asset) -> None:
         """Upsert one Asset. Idempotent on ``asset_id``."""
-        self.db.execute(
-            "INSERT INTO asset (asset_id, ticker, name, asset_class, exchange,"
-            " currency, is_active, updated_at) VALUES (?,?,?,?,?,?,?,?)"
-            " ON CONFLICT (asset_id) DO UPDATE SET"
-            " ticker=excluded.ticker, name=excluded.name,"
-            " asset_class=excluded.asset_class, exchange=excluded.exchange,"
-            " currency=excluded.currency, is_active=excluded.is_active,"
-            " updated_at=excluded.updated_at",
-            [
-                asset.asset_id,
-                asset.ticker,
-                asset.name,
-                asset.asset_class.value
-                if isinstance(asset.asset_class, AssetClass)
-                else str(asset.asset_class),
-                asset.exchange,
-                asset.currency,
-                asset.is_active,
-                _as_utc(asset.updated_at),
-            ],
-        )
+        from src.observability.telemetry import span
+
+        with span("graph.write", operation="upsert_asset", table="asset"):
+            self.db.execute(
+                "INSERT INTO asset (asset_id, ticker, name, asset_class, exchange,"
+                " currency, is_active, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+                " ON CONFLICT (asset_id) DO UPDATE SET"
+                " ticker=excluded.ticker, name=excluded.name,"
+                " asset_class=excluded.asset_class, exchange=excluded.exchange,"
+                " currency=excluded.currency, is_active=excluded.is_active,"
+                " updated_at=excluded.updated_at",
+                [
+                    asset.asset_id,
+                    asset.ticker,
+                    asset.name,
+                    asset.asset_class.value
+                    if isinstance(asset.asset_class, AssetClass)
+                    else str(asset.asset_class),
+                    asset.exchange,
+                    asset.currency,
+                    asset.is_active,
+                    _as_utc(asset.updated_at),
+                ],
+            )
 
     def upsert_macro_indicator(self, indicator: MacroIndicator) -> None:
         """Upsert one MacroIndicator. Idempotent on ``indicator_code``."""
@@ -156,31 +160,43 @@ class GraphRepository:
     # ------------------------------------------------------------------
     def upsert_edge(self, edge: GraphEdge) -> None:
         """Upsert one edge. Idempotent on ``(src, dst, rel_type, valid_from)``."""
-        rel = (
-            edge.rel_type.value
-            if isinstance(edge.rel_type, RelationType)
-            else str(edge.rel_type)
-        )
-        self.db.execute(
-            "INSERT INTO graph_edge (src_node, dst_node, rel_type, weight,"
-            " confidence, valid_from, valid_to, observation_count, computed_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)"
-            " ON CONFLICT (src_node, dst_node, rel_type, valid_from) DO UPDATE SET"
-            " weight=excluded.weight, confidence=excluded.confidence,"
-            " valid_to=excluded.valid_to, observation_count=excluded.observation_count,"
-            " computed_at=excluded.computed_at",
-            [
-                edge.src_node,
-                edge.dst_node,
-                rel,
-                edge.weight,
-                edge.confidence,
-                _as_utc(edge.valid_from),
-                _as_utc(edge.valid_to) if edge.valid_to else None,
-                edge.observation_count,
-                _as_utc(edge.computed_at or edge.valid_from),
-            ],
-        )
+        from src.observability.telemetry import span
+
+        with span(
+            "graph.write",
+            operation="upsert_edge",
+            rel_type=(
+                edge.rel_type.value
+                if isinstance(edge.rel_type, RelationType)
+                else str(edge.rel_type)
+            ),
+            weight=edge.weight,
+            confidence=edge.confidence,
+        ):
+            self.db.execute(
+                "INSERT INTO graph_edge (src_node, dst_node, rel_type, weight,"
+                " confidence, valid_from, valid_to, observation_count, computed_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT (src_node, dst_node, rel_type, valid_from) DO UPDATE SET"
+                " weight=excluded.weight, confidence=excluded.confidence,"
+                " valid_to=excluded.valid_to,"
+                " observation_count=excluded.observation_count,"
+                " computed_at=excluded.computed_at",
+                [
+                    edge.src_node,
+                    edge.dst_node,
+                    edge.rel_type.value
+                    if isinstance(edge.rel_type, RelationType)
+                    else str(edge.rel_type),
+                    edge.weight,
+                    edge.confidence,
+                    _as_utc(edge.valid_from),
+                    _as_utc(edge.valid_to) if edge.valid_to else None,
+                    edge.observation_count,
+                    _as_utc(edge.computed_at or edge.valid_from),
+                ],
+            )
+            get_metrics().graph_upserts.add(1)
 
     def upsert_edges(self, edges: Iterable[GraphEdge]) -> None:
         """Upsert many edges, preserving deterministic order."""

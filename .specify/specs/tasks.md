@@ -210,17 +210,17 @@ here is the spec's order, not an independent prioritisation.
 
 ### Tests for User Story 5 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T067 [P] [US5] Write failing observability coverage test in `tests/integration/test_trace_coverage.py` asserting that at least one span is emitted for each of the four constitution §IV boundaries — workflow execution, ingestion fetch, sentiment inference, graph mutation (FR-017)
-- [ ] T068 [P] [US5] Write failing unit test for metric definitions in `tests/unit/test_metrics.py` asserting the presence of latency, error-rate, cache hit/miss, and queue-depth series under their documented names (FR-018)
+- [X] T067 [P] [US5] Write failing observability coverage test in `tests/integration/test_trace_coverage.py` asserting that at least one span is emitted for each of the four constitution §IV boundaries — workflow execution, ingestion fetch, sentiment inference, graph mutation (FR-017)
+- [X] T068 [P] [US5] Write failing unit test for metric definitions in `tests/unit/test_metrics.py` asserting the presence of latency, error-rate, cache hit/miss, and queue-depth series under their documented names (FR-018)
 
 ### Implementation for User Story 5
 
-- [ ] T069 [P] [US5] Instrument the remaining ingestion, sentiment, and graph boundaries with spans and span events in `src/ingestion/registry.py`, `src/sentiment/analyzer.py`, and `src/graph/repository.py`, closing any gap found by `tests/integration/test_trace_coverage.py` (FR-017)
-- [ ] T070 [P] [US5] Wire metric recording into `src/observability/metrics.py` and expose a scrape surface reachable from `src/cli/main.py`, recording the metrics that back SC-001, SC-002, and SC-003 (FR-018)
-- [ ] T071 [US5] Implement MLflow run logging in `src/observability/evaluate.py` recording model outputs, confidence distributions, polarity distributions, and `model_id` lineage per run (FR-019)
-- [ ] T072 [US5] Implement Evidently drift computation in `src/observability/evaluate.py` writing drift results to MLflow, to a Prometheus gauge, and to an OTel span event (FR-019)
-- [ ] T073 [US5] Wire `aetheris evaluate [--since] [--min-confidence]` and `aetheris status [--verbose]` into `src/cli/main.py`, with `status` surfacing provider adapter state and quota consumption
-- [ ] T074 [US5] Run `pytest tests/integration/test_trace_coverage.py tests/unit/test_metrics.py` until green and confirm SC-003 cache hit ratio and SC-001 P95 latency are both measurable from the emitted telemetry in `src/observability/metrics.py`
+- [X] T069 [P] [US5] Instrument the remaining ingestion, sentiment, and graph boundaries with spans and span events in `src/ingestion/registry.py`, `src/sentiment/analyzer.py`, and `src/graph/repository.py`, closing any gap found by `tests/integration/test_trace_coverage.py` (FR-017)
+- [X] T070 [P] [US5] Wire metric recording into `src/observability/metrics.py` and expose a scrape surface reachable from `src/cli/main.py`, recording the metrics that back SC-001, SC-002, and SC-003 (FR-018)
+- [X] T071 [US5] Implement MLflow run logging in `src/observability/evaluate.py` recording model outputs, confidence distributions, polarity distributions, and `model_id` lineage per run (FR-019)
+- [X] T072 [US5] Implement Evidently drift computation in `src/observability/evaluate.py` writing drift results to MLflow, to a Prometheus gauge, and to an OTel span event (FR-019)
+- [X] T073 [US5] Wire `aetheris evaluate [--since] [--min-confidence]` and `aetheris status [--verbose]` into `src/cli/main.py`, with `status` surfacing provider adapter state and quota consumption
+- [X] T074 [US5] Run `pytest tests/integration/test_trace_coverage.py tests/unit/test_metrics.py` until green and confirm SC-003 cache hit ratio and SC-001 P95 latency are both measurable from the emitted telemetry in `src/observability/metrics.py`
 
 **Checkpoint**: All five user stories are independently functional, and constitution §IV is fully satisfied.
 
