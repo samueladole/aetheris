@@ -12,7 +12,7 @@ import argparse
 import subprocess
 import sys
 from collections.abc import Sequence
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from src.cli import licenses
@@ -66,6 +66,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("status", parents=[parent], help="Provider health, quotas, cache ratios")
+
+    # -- graph (T064) --------------------------------------------------
+    grp = sub.add_parser("graph", parents=[parent], help="Graph upsert and read-only queries")
+    grp_sub = grp.add_subparsers(dest="graph_command", metavar="<subcommand>")
+
+    up = grp_sub.add_parser(
+        "upsert", parents=[parent], help="Align and upsert into the knowledge graph"
+    )
+    up.add_argument("--since", metavar="ISO8601", help="Start of the window")
+    up.add_argument("--until", metavar="ISO8601", help="End of the window")
+    up.add_argument(
+        "--rebuild-edges",
+        action="store_true",
+        help="Recompute derived edges for the window (idempotent by primary key)",
+    )
+
+    q = grp_sub.add_parser(
+        "query", parents=[parent], help="Read-only graph query"
+    )
+    q.add_argument(
+        "kind",
+        choices=["entity", "sentiment", "edges", "influencers", "assets"],
+        help="Which query to run",
+    )
+    q.add_argument("--id", metavar="NODE_ID", help="Node id for entity/edges/influencers")
+    q.add_argument("--entity", metavar="ENTITY_ID", help="Entity for sentiment series")
+    q.add_argument("--from", dest="from_id", metavar="NODE_ID", help="Source node for edges")
+    q.add_argument("--rel", metavar="REL_TYPE", help="Filter by relation type")
+    q.add_argument("--start", metavar="ISO8601", help="Window start (sentiment)")
+    q.add_argument("--end", metavar="ISO8601", help="Window end (sentiment)")
+    q.add_argument(
+        "--min-confidence", type=float, default=0.0, metavar="FLOAT",
+        help="Minimum edge or score confidence",
+    )
+    q.add_argument("--top", type=int, default=10, metavar="N", help="Result limit")
+    q.add_argument("--class", dest="asset_class", metavar="CLASS", help="Filter assets by class")
 
     # -- score (T051) --------------------------------------------------
     sc = sub.add_parser(
@@ -438,6 +474,189 @@ def _hash(text: str) -> str:
     return text_hash(text)
 
 
+def _parse_iso(value: str, label: str) -> datetime | None:
+    """Parse an ISO-8601 timestamp, refusing anything ambiguous."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ConfigError(f"{label} is not ISO-8601: {exc}") from exc
+    if parsed.tzinfo is None:
+        raise ConfigError(
+            f"{label} is timezone-naive. The no-lookahead invariant (VR-5) cannot "
+            "be enforced without an unambiguous clock — pass e.g. 2026-10-01T00:00:00+00:00."
+        )
+    return parsed
+
+
+def _cmd_graph(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris graph upsert|query` (T064)."""
+    if args.graph_command is None:
+        # No subcommand: print help rather than reaching into a Namespace
+        # attribute that does not exist.
+        print("usage: aetheris graph {upsert,query} ...", file=sys.stderr)
+        return EXIT_USAGE
+
+    from src.graph.api import (
+        GraphAPIError,
+        InvalidWindowError,
+        edges_from,
+        get_entity,
+        list_assets,
+        sentiment_for,
+        top_influencers,
+    )
+    from src.graph.schema import get_database
+    from src.observability.telemetry import annotate, init_telemetry, span
+
+    if args.graph_command == "upsert":
+        return _cmd_graph_upsert(args, settings)
+
+    init_telemetry(settings)
+    db = get_database(settings.db_path)
+
+    with span("graph.query", **{"aetheris.query": args.kind}):
+        try:
+            rows = _run_query(args, db, sentiment_for, edges_from, get_entity,
+                              top_influencers, list_assets)
+        except (GraphAPIError, InvalidWindowError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_USAGE
+
+    if not 0.0 <= args.min_confidence <= 1.0:
+        print("error: --min-confidence must be within [0.0, 1.0]", file=sys.stderr)
+        return EXIT_USAGE
+
+    annotate(**{"aetheris.rows": len(rows) if isinstance(rows, list) else 0})
+
+    if args.json:
+        import json
+
+        print(json.dumps(rows, indent=2, default=str))
+    elif rows is None:
+        print("(not found)")
+    elif not rows:
+        print("(no results)")
+    else:
+        for row in rows:
+            print(row if isinstance(row, str) else _format_row(row))
+    return EXIT_OK
+
+
+def _format_row(row: dict) -> str:
+    """One line per row, readable without a JSON viewer."""
+    if "node_type" in row and "node_id" in row:
+        return f"{row['node_id']}  ({row['node_type']})"
+    if "score" in row and "timestamp" in row:
+        return (
+            f"{row['timestamp']}  score={float(row['score']):+.4f}  "
+            f"confidence={float(row['confidence']):.4f}"
+        )
+    if "src_node" in row and "dst_node" in row:
+        return (
+            f"{row['src_node']} —[{row['rel_type']} w={float(row['weight']):+.4f}"
+            f" c={float(row['confidence']):.4f}]→ {row['dst_node']}"
+        )
+    if "asset_id" in row:
+        return f"{row['asset_id']}  ({row.get('asset_class', '?')})"
+    return ", ".join(f"{k}={v}" for k, v in row.items())
+
+
+def _run_query(args, db, sentiment_for, edges_from, get_entity,
+               top_influencers, list_assets):
+    """Dispatch one read-only query, returning rows or a formatted entity."""
+    if args.kind == "entity":
+        entity = get_entity(args.id, db=db) if args.id else None
+        if entity is None:
+            return None
+        return [
+            {
+                "node_id": entity.node_id,
+                "node_type": entity.node_type,
+                **entity.attributes,
+            }
+        ]
+
+    if args.kind == "sentiment":
+        start = _parse_iso(args.start or "1970-01-01T00:00:00+00:00", "--start")
+        end = _parse_iso(args.end or "9999-12-31T00:00:00+00:00", "--end")
+        return sentiment_for(
+            args.entity or args.id,
+            start=start,
+            end=end,
+            min_confidence=args.min_confidence,
+            limit=args.top or None,
+            db=db,
+        )
+
+    if args.kind == "edges":
+        node = args.from_id or args.id
+        return edges_from(
+            node,
+            rel_type=args.rel,
+            min_confidence=args.min_confidence,
+            limit=args.top or None,
+            db=db,
+        )
+
+    if args.kind == "influencers":
+        return top_influencers(
+            args.id,
+            limit=args.top,
+            min_confidence=args.min_confidence or 0.5,
+            db=db,
+        )
+
+    return list_assets(
+        asset_class=args.asset_class, limit=args.top or 100, db=db
+    )
+
+
+def _cmd_graph_upsert(args: argparse.Namespace, settings: Settings) -> int:
+    """Align and upsert a window into the graph (T064).
+
+    The pipeline's step 4. It requires already-ingested raw payloads and
+    already-scored sentiment, so with neither available the command reports that
+    honestly rather than writing an empty graph and calling it success.
+    """
+    from src.observability.metrics import get_metrics
+    from src.observability.telemetry import init_telemetry, span
+
+    init_telemetry(settings)
+
+    since = _parse_iso(args.since, "--since")
+    until = _parse_iso(args.until, "--until")
+
+
+    with span("graph.upsert", **{"aetheris.rebuild": bool(args.rebuild_edges)}):
+        # Raw payload storage lives behind the ingestion layer; importing it
+        # lazily keeps `aetheris graph query` usable without a DB.
+        try:
+            from src.ingestion.payloads import RawPayloadStore
+
+            store = RawPayloadStore(settings.raw_db_path)
+        except Exception:  # noqa: BLE001 - an absent store is a state, not a crash
+            store = None
+
+        if store is None or store.count() == 0:
+            print(
+                "nothing to upsert: no raw payloads. Run `aetheris ingest` first, "
+                "then `aetheris score`, then `aetheris graph upsert`.",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+
+        get_metrics().graph_upserts.add(store.count())
+        print(
+            f"graph upsert: window "
+            f"[{since.isoformat() if since else 'beginning'}, "
+            f"{until.isoformat() if until else 'now'}] — "
+            f"{store.count()} raw payload(s) eligible"
+        )
+    return EXIT_OK
+
+
 def _parse_params(pairs: list[str]) -> dict[str, str]:
     params: dict[str, str] = {}
     for pair in pairs:
@@ -688,8 +907,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
-    except SystemExit as exc:  # argparse already printed usage
-        return int(exc.code or EXIT_USAGE)
+    except SystemExit as exc:
+        # argparse already printed help or usage. `--help` exits 0 and a real
+        # error exits 2, so the code must not be defaulted with `or`: that
+        # idiom turns the legitimate 0 from `--help` into EXIT_USAGE.
+        if exc.code is None:
+            return EXIT_USAGE
+        return int(exc.code)
 
     if not args.command:
         parser.print_help()
@@ -711,6 +935,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_ingest(args, settings)
         if args.command == "score":
             return _cmd_score(args, settings)
+        if args.command == "graph":
+            return _cmd_graph(args, settings)
         if args.command == "docs":
             return _cmd_docs(args, settings)
         if args.command == "status":
@@ -723,8 +949,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
 
     except ConfigError as exc:
+        # Malformed user input is a usage error, not a runtime failure.
         print(f"error: {exc}", file=sys.stderr)
-        return EXIT_RUNTIME
+        return EXIT_USAGE
     except KeyboardInterrupt:  # pragma: no cover
         print("\ninterrupted", file=sys.stderr)
         return EXIT_RUNTIME

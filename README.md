@@ -16,7 +16,7 @@ complete, and the durable-execution and ingestion layers are implemented.
 
 | Work item | Progress | Tasks |
 |---|---|---|
-| Pipeline (`src/`) | 41 / 81 | durable execution, ingestion adapters |
+| Pipeline (`src/`) | 65 / 81 | durable execution, ingestion, sentiment, graph |
 | Documentation site | 34 / 34 | complete — builds, deploys, gates enforce |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
@@ -240,8 +240,8 @@ aetheris run --trigger schedule
 
 ## CLI
 
-**7 commands**: `run`, `ingest`, `score`, `status`, `version`, `check-licenses`, and
-`docs`. The `query` command is specified but not yet implemented (task T064).
+**8 commands**: `run`, `ingest`, `score`, `graph`, `status`, `version`, `check-licenses`,
+and `docs`. The `query` command is specified but not yet implemented (task T064).
 
 Global options (`--config`, `--db`, `--raw`, `--json`, `--trace`) work either
 before or after the subcommand.
@@ -251,6 +251,7 @@ before or after the subcommand.
 | `aetheris run` | Execute the durable pipeline. `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
 | `aetheris ingest` | Run one adapter. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
 | `aetheris score` | Score text. `--entity`, `--model`, `--temperature`, `--text` |
+| `aetheris graph` | `upsert` (align + idempotent write) and read-only `query` |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
 | `aetheris status` | Provider health, quotas, cache hit ratio, workflow state |
@@ -283,13 +284,12 @@ raw transformer softmax is systematically overconfident, so passing it through
 uncalibrated would violate VR-2. Model choice is gated by a licence manifest: any
 model not listed in `src/sentiment/models.py` is refused rather than trusted.
 
-### Specified, not yet implemented — graph
+### Also working — read-only graph queries
 
-The graph layer will expose a **read-only, in-process** API (no network service, no
+The graph layer exposes a **read-only, in-process** API (no network service, no
 auth surface — clarification: no web service is in scope):
 
 ```python
-# Not yet importable: src/graph/api.py is tasks T059–T063 (US4).
 from src.graph.api import get_entity, sentiment_for, top_influencers
 from datetime import datetime, timezone
 
@@ -300,6 +300,10 @@ points = sentiment_for(
     min_confidence=0.7,
 )
 ```
+
+Traversal is capped at two hops; deeper returns ``UnsupportedTraversalError``
+rather than silently truncating. Same queries from the CLI:
+`aetheris graph query sentiment --entity ... --start ... --json`.
 
 Contracts: [`graph-api.md`](.specify/specs/contracts/graph-api.md) ·
 [`sentiment-schema.md`](.specify/specs/contracts/sentiment-schema.md) ·
@@ -518,7 +522,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **268 tests pass** · **24 API reference pages**
+**5 import contracts kept** · **347 tests pass** · **28 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

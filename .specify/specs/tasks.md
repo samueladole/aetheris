@@ -181,22 +181,22 @@ here is the spec's order, not an independent prioritisation.
 
 ### Tests for User Story 4 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T054 [P] [US4] Write failing point-in-time replay test in `tests/integration/test_point_in_time.py` asserting (a) a macro print released after a timestamp is not observable by that timestamp and (b) a fixed cassette produces a byte-identical graph state on replay (VR-5, FR-014)
-- [ ] T055 [P] [US4] Write failing idempotency test in `tests/integration/test_upsert_idempotent.py` asserting repeated upserts create no duplicate `(src_node, dst_node, rel_type, valid_from)` keys and that re-scoring with a new `model.revision` creates a distinct row rather than overwriting (VR-6, FR-013)
-- [ ] T056 [P] [US4] Write failing constraint test in `tests/unit/test_graph_schema.py` asserting the CHECK constraints reject `weight` outside [-1.0, 1.0] and `confidence` outside [0.0, 1.0] at the database layer, not only in application code (VR-3, VR-4)
-- [ ] T057 [P] [US4] Write failing contract test for the read-only API in `tests/contract/test_graph_api.py` covering every function and error type in `contracts/graph-api.md`, including rejection of tz-naive datetimes with `InvalidWindowError` and `max_hops > 2` with `UnsupportedTraversalError` (FR-021)
-- [ ] T058 [P] [US4] Write failing CLI contract test for the query grammar in `tests/contract/test_cli_query.py` covering `aetheris query entity|sentiment|edges|influencers|assets` and the `--json` output shape
+- [X] T054 [P] [US4] Write failing point-in-time replay test in `tests/integration/test_point_in_time.py` asserting (a) a macro print released after a timestamp is not observable by that timestamp and (b) a fixed cassette produces a byte-identical graph state on replay (VR-5, FR-014)
+- [X] T055 [P] [US4] Write failing idempotency test in `tests/integration/test_upsert_idempotent.py` asserting repeated upserts create no duplicate `(src_node, dst_node, rel_type, valid_from)` keys and that re-scoring with a new `model.revision` creates a distinct row rather than overwriting (VR-6, FR-013)
+- [X] T056 [P] [US4] Write failing constraint test in `tests/unit/test_graph_schema.py` asserting the CHECK constraints reject `weight` outside [-1.0, 1.0] and `confidence` outside [0.0, 1.0] at the database layer, not only in application code (VR-3, VR-4)
+- [X] T057 [P] [US4] Write failing contract test for the read-only API in `tests/contract/test_graph_api.py` covering every function and error type in `contracts/graph-api.md`, including rejection of tz-naive datetimes with `InvalidWindowError` and `max_hops > 2` with `UnsupportedTraversalError` (FR-021)
+- [X] T058 [P] [US4] Write failing CLI contract test for the query grammar in `tests/contract/test_cli_query.py` covering `aetheris query entity|sentiment|edges|influencers|assets` and the `--json` output shape
 
 ### Implementation for User Story 4
 
-- [ ] T059 [P] [US4] Implement node upsert in `src/graph/repository.py` for `Asset` (`asset_id = asset_class:exchange:symbol`), `MacroIndicator` (`indicator_code` provider-prefixed), and `SentimentMetric` (`metric_id = entity_id:source_reference:text_hash`) using the identity keys and uniqueness rules in data-model.md §1 (FR-011)
-- [ ] T060 [P] [US4] Implement backward as-of alignment in `src/graph/align.py` storing both observation and availability timestamps and enforcing the strict no-lookahead invariant from verification rule VR-5 (FR-014)
-- [ ] T061 [US4] Implement edge upsert in `src/graph/repository.py` for `INFLUENCES`, `CORRELATES_WITH` (canonical ordering `src_node < dst_node` to prevent duplicate pairs), and `TARGETS`, with signed `weight ∈ [-1.0, 1.0]`, `confidence ∈ [0.0, 1.0]`, `observation_count`, and the `valid_from`/`valid_to` window (FR-012)
-- [ ] T062 [P] [US4] Implement the 1–2 hop query builders in `src/graph/queries.py` covering correlation, influencers, sentiment time windows, and asset listing with `min_confidence` applied before any limit
-- [ ] T063 [US4] Implement the read-only API in `src/graph/api.py` exactly per `contracts/graph-api.md`, enforcing tz-aware UTC on all datetimes and capping traversal at 2 hops (FR-021)
-- [ ] T064 [US4] Wire `aetheris graph upsert [--since] [--until] [--rebuild-edges]` and all `aetheris query` subcommands into `src/cli/main.py`, projecting the same dataclasses returned by `src/graph/api.py`
-- [ ] T065 [US4] Emit an OpenTelemetry span for every graph write in `src/graph/repository.py`, including node upserts, edge upserts, and the alignment step (FR-017)
-- [ ] T066 [US4] Run `pytest tests/integration/test_point_in_time.py tests/integration/test_upsert_idempotent.py tests/unit/test_graph_schema.py tests/contract/test_graph_api.py tests/contract/test_cli_query.py` until green and verify the SC-001 P95 upsert latency keeps a full scheduled run under 5 minutes
+- [X] T059 [P] [US4] Implement node upsert in `src/graph/repository.py` for `Asset` (`asset_id = asset_class:exchange:symbol`), `MacroIndicator` (`indicator_code` provider-prefixed), and `SentimentMetric` (`metric_id = entity_id:source_reference:text_hash`) using the identity keys and uniqueness rules in data-model.md §1 (FR-011)
+- [X] T060 [P] [US4] Implement backward as-of alignment in `src/graph/align.py` storing both observation and availability timestamps and enforcing the strict no-lookahead invariant from verification rule VR-5 (FR-014)
+- [X] T061 [US4] Implement edge upsert in `src/graph/repository.py` for `INFLUENCES`, `CORRELATES_WITH` (canonical ordering `src_node < dst_node` to prevent duplicate pairs), and `TARGETS`, with signed `weight ∈ [-1.0, 1.0]`, `confidence ∈ [0.0, 1.0]`, `observation_count`, and the `valid_from`/`valid_to` window (FR-012)
+- [X] T062 [P] [US4] Implement the 1–2 hop query builders in `src/graph/queries.py` covering correlation, influencers, sentiment time windows, and asset listing with `min_confidence` applied before any limit
+- [X] T063 [US4] Implement the read-only API in `src/graph/api.py` exactly per `contracts/graph-api.md`, enforcing tz-aware UTC on all datetimes and capping traversal at 2 hops (FR-021)
+- [X] T064 [US4] Wire `aetheris graph upsert [--since] [--until] [--rebuild-edges]` and all `aetheris query` subcommands into `src/cli/main.py`, projecting the same dataclasses returned by `src/graph/api.py`
+- [X] T065 [US4] Emit an OpenTelemetry span for every graph write in `src/graph/repository.py`, including node upserts, edge upserts, and the alignment step (FR-017)
+- [X] T066 [US4] Run `pytest tests/integration/test_point_in_time.py tests/integration/test_upsert_idempotent.py tests/unit/test_graph_schema.py tests/contract/test_graph_api.py tests/contract/test_cli_query.py` until green and verify the SC-001 P95 upsert latency keeps a full scheduled run under 5 minutes
 
 **Checkpoint**: All four stories work independently — the pipeline produces a durable, point-in-time-correct, queryable knowledge graph.
 

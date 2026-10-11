@@ -11,6 +11,8 @@ path cannot silently persist an out-of-range weight or confidence.
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 
 import duckdb
@@ -155,6 +157,94 @@ CREATE TABLE IF NOT EXISTS scoring_lineage (
     model_id   VARCHAR NOT NULL
 );
 """
+
+
+# ---------------------------------------------------------------------------
+# Node and edge value types, mirroring data-model.md §1-§2.
+#
+# Field names match the persisted columns one-for-one, so a value type can be
+# written straight into the repository's upsert statements.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Asset:
+    """A tradable instrument (data-model.md §1.1)."""
+
+    asset_id: str
+    ticker: str
+    name: str
+    asset_class: AssetClass
+    exchange: str
+    currency: str
+    is_active: bool = True
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class MacroIndicator:
+    """A macroeconomic series (data-model.md §1.2)."""
+
+    indicator_code: str
+    name: str
+    unit: str
+    frequency: Frequency
+    seasonal_adjustment: str
+    provider: str
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class SentimentMetric:
+    """One scored text item (data-model.md §1.3)."""
+
+    metric_id: str
+    entity_id: str
+    entity_type: NodeType
+    score: float
+    confidence: float
+    timestamp: datetime
+    source_reference: str
+    model_id: str
+    text_hash: str
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Implement the __post_init__ special method."""
+        # VR-1 / VR-2: enforce at construction as well as by DB constraint.
+        # The second enforcement point costs nothing and surfaces the bug
+        # before DuckDB rejects the row with a less helpful message.
+        if not -1.0 <= self.score <= 1.0:
+            raise ValueError(f"score {self.score} is outside [-1.0, 1.0] (VR-1)")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence {self.confidence} is outside [0.0, 1.0] (VR-2)"
+            )
+
+
+@dataclass(frozen=True)
+class GraphEdge:
+    """A weighted, typed edge (data-model.md §2)."""
+
+    src_node: str
+    dst_node: str
+    rel_type: RelationType
+    weight: float
+    confidence: float
+    valid_from: datetime
+    valid_to: datetime | None = None
+    observation_count: int = 0
+    computed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Implement the __post_init__ special method."""
+        # VR-3 / VR-4, enforced as early as the node types are.
+        if not -1.0 <= self.weight <= 1.0:
+            raise ValueError(f"weight {self.weight} is outside [-1.0, 1.0] (VR-3)")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence {self.confidence} is outside [0.0, 1.0] (VR-4)"
+            )
 
 
 class GraphSchemaError(RuntimeError):
