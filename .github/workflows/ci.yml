@@ -25,13 +25,13 @@ jobs:
       - name: Install project
         run: uv pip install --python .venv/bin/python -e ".[dev]"
 
-      # Principle I: fails on known non-permissive licenses (exit 3).
-      # LENIENT mode by explicit decision — four transitive dependencies are
-      # non-permissive (see constitution-amendments.md A-001). Strict mode also
-      # fails on *undetermined* licenses, which would block CI on huey.
-      # Flip back to --strict once A-001 is ratified.
+      # Principle I: fails on any non-permissive license (exit 3).
+      # STRICT mode. The four accepted transitive deviations are recorded in
+      # constitution-amendments.md A-001 and exempted by name in the gate, so
+      # strict mode means "no violation outside the accepted list". A newly
+      # introduced non-permissive dependency fails here.
       - name: License gate (Principle I) — Python
-        run: .venv/bin/aetheris check-licenses --lenient
+        run: .venv/bin/aetheris check-licenses --strict
 
       # The Python gate cannot see Node packages, and the documentation
       # accessibility gates depend on two of them (html-validate,

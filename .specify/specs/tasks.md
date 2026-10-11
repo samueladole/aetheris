@@ -230,13 +230,13 @@ here is the spec's order, not an independent prioritisation.
 
 **Purpose**: Improvements that affect multiple user stories, plus the verification gates the constitution requires.
 
-- [ ] T075 [P] Write `README.md` documenting setup, dry-run usage, and the internal-use-only boundary for provider data from plan.md issue V4
-- [ ] T076 [P] Run the full `.specify/specs/quickstart.md` validation end-to-end and fix every step that fails, including `aetheris check-licenses --strict`, `lint-imports`, and the STEP 7 point-in-time replay
-- [ ] T077 [P] Confirm every FR ID in spec §5.2 (FR-001 … FR-021) has at least one passing test and record per-FR coverage in `docs/coverage.md` (SC-004)
-- [ ] T078 [P] Measure a volume-scale run at the plan.md assumed scale (~500 assets, ~3k news items/day) and record actual timing and edge counts in `docs/scale.md`, confirming or revising the scale assumption
-- [ ] T079 [P] Verify the DBOS Python SQLite backend is GA at the pinned version; if not GA, execute the documented Prefect 3 (Apache-2.0) fallback in `src/orchestration/workflows.py` and record the switch in `research.md` §A
-- [ ] T080 Add a CI job to `.github/workflows/ci.yml` running `aetheris check-licenses --strict` and `lint-imports` on every pull request so Principle I and Principle II cannot regress silently
-- [ ] T081 Re-run `/speckit.analyze` against `.specify/specs/spec.md`, `.specify/specs/plan.md`, and `.specify/specs/tasks.md` to confirm every task maps to an FR and that no unmapped tasks remain
+- [X] T075 [P] Write `README.md` documenting setup, dry-run usage, and the internal-use-only boundary for provider data from plan.md issue V4
+- [X] T076 [P] Run the full `.specify/specs/quickstart.md` validation end-to-end and fix every step that fails, including `aetheris check-licenses --strict`, `lint-imports`, and the STEP 7 point-in-time replay
+- [X] T077 [P] Confirm every FR ID in spec §5.2 (FR-001 … FR-021) has at least one passing test and record per-FR coverage in `docs/coverage.md` (SC-004)
+- [X] T078 [P] Measure a volume-scale run at the plan.md assumed scale (~500 assets, ~3k news items/day) and record actual timing and edge counts in `docs/scale.md`, confirming or revising the scale assumption
+- [X] T079 [P] Verify the DBOS Python SQLite backend is GA at the pinned version; if not GA, execute the documented Prefect 3 (Apache-2.0) fallback in `src/orchestration/workflows.py` and record the switch in `research.md` §A
+- [X] T080 Add a CI job to `.github/workflows/ci.yml` running `aetheris check-licenses --strict` and `lint-imports` on every pull request so Principle I and Principle II cannot regress silently
+- [X] T081 Re-run `/speckit.analyze` against `.specify/specs/spec.md`, `.specify/specs/plan.md`, and `.specify/specs/tasks.md` to confirm every task maps to an FR and that no unmapped tasks remain
 
 ---
 

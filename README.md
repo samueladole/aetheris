@@ -16,7 +16,7 @@ complete, and the durable-execution and ingestion layers are implemented.
 
 | Work item | Progress | Tasks |
 |---|---|---|
-| Pipeline (`src/`) | 73 / 81 | durable execution, ingestion, sentiment, graph |
+| Pipeline (`src/`) | 80 / 81 | durable execution, ingestion, sentiment, graph |
 | Documentation site | 34 / 34 | complete — builds, deploys, gates enforce |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
