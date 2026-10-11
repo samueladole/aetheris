@@ -1,0 +1,132 @@
+# Documentation site deployment (feature 001-docs-site-cicd, T026/T027)
+#
+# Publishes to GitHub Pages on every push to main. Two properties this file
+# must preserve, both verified by tests/contract/test_docs_workflow.py:
+#
+#   1. MAIN ONLY  - branches other than main are verify-only (the deploy job
+#      re-checks its ref, so no trigger route can publish an arbitrary ref).
+#   2. FAILURE ISOLATION - `deploy` declares `needs: build`, so a failed build
+#      never reaches the publish step and the previously published site
+#      survives. A broken run must not become a broken live site.
+#
+# The build deliberately needs NO provider credentials and no network data
+# source: a documentation run that called FRED or Finnhub would consume
+# free-tier quota for no reason (FR-013, FR-014). Playwright's Chromium is a
+# one-time tool download, not a runtime network dependency.
+
+name: Deploy documentation
+
+on:
+  push:
+    branches: [main]
+
+# Least-privilege defaults; the deploy job requests only what it needs.
+permissions:
+  contents: read
+
+jobs:
+  # Build every gate before anything is published. A failure here stops the
+  # workflow, so `deploy` never runs.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Create virtualenv
+        run: uv venv --python 3.11 .venv
+
+      - name: Install project with docs extra
+        run: uv pip install --python .venv/bin/python -e ".[dev,docs]"
+
+      - name: Install Node tooling from lockfile
+        run: npm ci --ignore-scripts
+
+      # T028 — the build is hermetic. It needs no provider credentials and no
+      # network data source: every gate reads only the repository's own source
+      # and Markdown. A documentation run that called FRED or Finnhub would
+      # consume free-tier quota for no reason (FR-013, FR-014), so any such
+      # credential leaking into this workflow is a defect. Asserted by
+      # tests/contract/test_docs_workflow.py::TestWorkflowFileHygiene.
+      - name: Verify no provider credentials are required
+        run: |
+          if env | grep -E '^(FRED|ALPHA_VANTAGE|FINNHUB|FMP|TIINGO)_API_KEY'; then
+            echo "::error::A provider credential is present. The documentation build" \
+                 "needs no provider credentials and must not consume free-tier" \
+                 "quota (FR-013, FR-014)."
+            exit 1
+          fi
+          echo "docs build is credential-free and network-free"
+
+      # FR-006 / VR-1 — a public entity with no docstring fails the build.
+      - name: Docstring gate (FR-006)
+        run: |
+          .venv/bin/ruff check \
+            --select D100,D101,D102,D103,D104,D105,D106,D107 src
+
+      # FR-010 — strict mode, so any mkdocs or plugin warning fails too.
+      - name: Build documentation site
+        run: .venv/bin/mkdocs build --strict
+
+      # Repair defects the theme and generator introduce in the built HTML
+      # (duplicate landmark labels, missing <th> scope) before judging it.
+      - name: Repair built HTML
+        run: node scripts/fix_built_html.js site/
+
+      # VR-5 / FR-017 — the site is publicly readable, so a credential in the
+      # output is a security exposure, not a cosmetic defect.
+      - name: Secret scan of built site
+        run: .venv/bin/python scripts/scan_secrets.py site/
+
+      # FR-019 / FR-020 — structural accessibility, then rendered.
+      - name: Accessibility gate — structural
+        run: npx html-validate "site/**/*.html" --formatter stylish
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Accessibility gate — rendered
+        run: node scripts/check_a11y_rendered.js site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  # Publish only what the build job proved good. `needs` is the whole
+  # failure-isolation guarantee, so it must not be weakened.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

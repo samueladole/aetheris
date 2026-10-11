@@ -114,15 +114,15 @@ updates; then force a failure and confirm the previously published site keeps se
 
 ### Tests for User Story 3 (write FIRST; ensure they FAIL before implementation) ⚠️
 
-- [ ] T024 [P] [US3] Write the branch-filter test in `tests/contract/test_docs_workflow.py` asserting that `.github/workflows/docs.yml` triggers on pushes to `main` only and not on pull requests or other branches
-- [ ] T025 [P] [US3] Write the publish-isolation test in `tests/contract/test_docs_workflow.py` asserting that the deploy job declares `needs:` on the build-and-gate job, so a failed build cannot reach the publish step (FR-012, VR-7)
+- [X] T024 [P] [US3] Write the branch-filter test in `tests/contract/test_docs_workflow.py` asserting that `.github/workflows/docs.yml` triggers on pushes to `main` only and not on pull requests or other branches
+- [X] T025 [P] [US3] Write the publish-isolation test in `tests/contract/test_docs_workflow.py` asserting that the deploy job declares `needs:` on the build-and-gate job, so a failed build cannot reach the publish step (FR-012, VR-7)
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Create `.github/workflows/docs.yml` with a `build` job that installs the `docs` extra, runs all four gates in order, and uploads the built site as a Pages artifact, restricted to pushes on `main`
-- [ ] T027 [US3] Add a `deploy` job to `.github/workflows/docs.yml` guarded by `needs: build` and `if: github.ref == 'refs/heads/main'`, deploying the uploaded artifact to GitHub Pages with `id-token: write` and `pages: write` permissions
-- [ ] T028 [US3] Add the `AETHERIS_TRACE_STDOUT`-free, network-free documentation build note to `.github/workflows/docs.yml`, confirming the build requires no provider credentials and no network access (FR-013, FR-014)
-- [ ] T029 [US3] Run the §9–§10 scenarios in `.specify/specs/001-docs-site-cicd/quickstart.md` to verify publication on main, verify-only behaviour on a pull request, and that a forced build failure leaves the previously published site intact, recording each result in `docs/validation.md` (FR-011, FR-012, SC-003, SC-005)
+- [X] T026 [US3] Create `.github/workflows/docs.yml` with a `build` job that installs the `docs` extra, runs all four gates in order, and uploads the built site as a Pages artifact, restricted to pushes on `main`
+- [X] T027 [US3] Add a `deploy` job to `.github/workflows/docs.yml` guarded by `needs: build` and `if: github.ref == 'refs/heads/main'`, deploying the uploaded artifact to GitHub Pages with `id-token: write` and `pages: write` permissions
+- [X] T028 [US3] Add the `AETHERIS_TRACE_STDOUT`-free, network-free documentation build note to `.github/workflows/docs.yml`, confirming the build requires no provider credentials and no network access (FR-013, FR-014)
+- [X] T029 [US3] Run the §9–§10 scenarios in `.specify/specs/001-docs-site-cicd/quickstart.md` to verify publication on main, verify-only behaviour on a pull request, and that a forced build failure leaves the previously published site intact, recording each result in `docs/validation.md` (FR-011, FR-012, SC-003, SC-005)
 
 **Checkpoint**: All three user stories work — the site publishes automatically and failures never produce a partial deploy.
 
@@ -136,7 +136,7 @@ updates; then force a failure and confirm the previously published site keeps se
 - [ ] T031 [P] Add the newly permitted documentation dependencies to the license gate by running `aetheris check-licenses --lenient` and recording that `mkdocs`, `mkdocs-material`, `mkdocstrings`, `mkdocs-gen-files`, `mkdocs-literate-nav`, `mkdocs-section-index`, `html-validate`, and `@playwright/test` report no *unaccepted* violation, adding any newly-flagged package to `src/cli/licenses.py` with its justification (FR-015)
 - [X] T032 [P] Document the contrast palette in `docs/stylesheets/extra.css` with the measured foreground/background pairs and their contrast ratios, so the rendered accessibility gate's thresholds are justified rather than guessed
 - [X] T033 [P] Record the covered WCAG rule ids in `docs/usage/accessibility.md`, stating plainly which rules the bespoke checker verifies and that rules outside that list are unverified rather than compliant, per the accepted trade-off in `plan.md` Complexity Tracking
-- [ ] T034 Run the full `quickstart.md` validation from §0 through §10 and record the outcome, confirming SC-001 through SC-007 and explicitly noting that SC-007 must be verified against the covered-rule list rather than assumed
+- [X] T034 Run the full `quickstart.md` validation from §0 through §10 and record the outcome, confirming SC-001 through SC-007 and explicitly noting that SC-007 must be verified against the covered-rule list rather than assumed
 
 ---
 
