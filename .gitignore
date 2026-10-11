@@ -47,6 +47,10 @@ htmlcov/
 .env
 .env.*
 !.env.example
+# The TOML config path can hold credentials too, so it is ignored by default
+# while the documented example file is tracked.
+aetheris.toml
+aetheris.toml.local
 *.pem
 *.key
 secrets.yml

@@ -195,6 +195,7 @@ Rejected on licence grounds:
 ├── mkdocs.yml
 ├── package.json                 # docs toolchain only
 ├── pyproject.toml
+├── .env.example                 # credential template (.env is git-ignored)
 └── .specify/
     ├── memory/                  # constitution, amendments
     ├── specs/                   # pipeline + feature design artifacts
@@ -222,18 +223,32 @@ aetheris run --trigger schedule --dry-run
 A dry run validates configuration and quotas without calling any provider, so it
 needs no API keys and consumes no free-tier quota.
 
-### Live runs
+### Credentials
 
-Set credentials in the environment — never commit them:
+Credentials can come from the environment or from a local `.env` file, which is
+git-ignored. A key already exported in the environment **always wins** over the
+file, so a stale `.env` can never silently shadow a credential you set
+deliberately.
 
 ```bash
-export FRED_API_KEY="..."
-export FINNHUB_API_KEY="..."
-export FMP_API_KEY="..."
-export TIINGO_API_KEY="..."
-export ALPHA_VANTAGE_API_KEY="..."
+cp .env.example .env      # then fill in real values
+```
 
+`.env` is read automatically from the working directory. To point elsewhere:
+
+```bash
+export AETHERIS_ENV_FILE=./.env.secrets
+```
+
+A malformed or unreadable `.env` produces a warning and the run continues with
+whatever credentials it does have — a corrupted local file never breaks the CLI.
+Run `aetheris status` to see which providers are configured.
+
+### Live runs
+
+```bash
 aetheris run --trigger schedule
+```
 ```
 
 ---
@@ -523,7 +538,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **386 tests pass** · **29 API reference pages**
+**5 import contracts kept** · **397 tests pass** · **29 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

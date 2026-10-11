@@ -39,6 +39,8 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "import-linter>=2.0",
+    # Local secret files (.env) — BSD-3-Clause, verified
+    "python-dotenv>=1.0",
 ]
 
 # Documentation site (feature 001-docs-site-cicd).

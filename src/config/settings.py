@@ -8,6 +8,7 @@ are never written to disk (constitution: Secrets).
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,42 @@ except ModuleNotFoundError:  # pragma: no cover
 
 class ConfigError(RuntimeError):
     """Raised when configuration is missing or invalid."""
+
+
+def _load_env_file() -> None:
+    """Load a local secret file into the environment, without overriding it.
+
+    The constitution sanctions *"environment variables or local secret files that
+    are git-ignored"*. `.env` is git-ignored, so this makes the sanctioned path
+    usable without requiring `set -a && . ./.env` in every shell.
+
+    Precedence matters and is deliberate: a value already present in the real
+    environment always wins over the file. Otherwise a stale `.env` could
+    silently override an explicitly-exported credential — the kind of surprise
+    that is very hard to debug from a failed auth error.
+    """
+    path = _env("AETHERIS_ENV_FILE", ".env")
+    if not path or not Path(path).is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover - dependency always installed
+        return
+
+    # override=False is the whole point: exported variables take precedence.
+    #
+    # The try/except is not defensive noise. A malformed or non-UTF-8 secret file
+    # makes python-dotenv raise, and that would turn every command into a stack
+    # trace — a corrupted local file would break the CLI in a way that looks like
+    # a program bug rather than a bad credential file. Degrade instead.
+    try:
+        load_dotenv(dotenv_path=path, override=False)
+    except Exception as exc:  # noqa: BLE001 - degrade, never crash the CLI
+        print(
+            f"warning: could not read credential file {path}: {exc}",
+            file=sys.stderr,
+        )
+        return
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -103,6 +140,7 @@ class Settings:
     @classmethod
     def load(cls, config_path: str | None = None) -> Settings:
         """Build settings from a TOML file (if any) with the environment overriding."""
+        _load_env_file()
         path = config_path or _env("AETHERIS_CONFIG")
         data: dict[str, Any] = {}
         if path:
