@@ -15,8 +15,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # The (provider, endpoint, params) pairs to record, drawn from spec §3.2.1.
+#
+# Quota cost of one pass is deliberately tiny — one call per endpoint, 11 total —
+# because free tiers are a shared budget. Alpha Vantage is capped at 25 requests
+# per DAY, so its single call is 4% of the daily allowance; Tiingo is the tightest
+# binding constraint at 50 requests per hour. Run this once, not per test run.
 REQUESTS: list[tuple[str, str, dict[str, str]]] = [
     ("fred", "series/observations", {"series_id": "GDP"}),
+    # Alpha Vantage: one call only — 4% of the 25/day free-tier allowance.
+    ("alpha_vantage", "GLOBAL_QUOTE", {"symbol": "AAPL"}),
     ("finnhub", "quote", {"symbol": "AAPL"}),
     ("finnhub", "stock/profile2", {"symbol": "AAPL"}),
     ("finnhub", "/news", {"category": "general"}),
@@ -37,21 +44,17 @@ class Recorder:
 
     def run(self) -> int:
         """Handle the run."""
-        import os
+        # Read credentials through Settings so a git-ignored .env file works.
+        # Reading os.environ directly here would report every key as missing
+        # even though the CLI finds them.
+        from src.config.settings import get_settings
 
-        missing = [
-            name
-            for name in (
-                "FRED_API_KEY",
-                "ALPHA_VANTAGE_API_KEY",
-                "FINNHUB_API_KEY",
-                "FMP_API_KEY",
-                "TIINGO_API_KEY",
-            )
-            if not os.environ.get(name)
-        ]
-        if missing:
-            print(f"error: missing credentials: {', '.join(missing)}")
+        settings = get_settings()
+        excluded = settings.missing_providers(
+            ["fred", "alpha_vantage", "finnhub", "fmp", "tiingo"]
+        )
+        if excluded:
+            print(f"error: missing credentials for: {', '.join(excluded)}")
             return 1
 
         import vcr
@@ -59,7 +62,6 @@ class Recorder:
         self.output.mkdir(parents=True, exist_ok=True)
 
         # Local imports keep this runnable without the package installed.
-        from src.config.settings import get_settings
         from src.ingestion.fred_client import FredAdapter
         from src.ingestion.market_client import MarketAdapter
         from src.ingestion.news_client import NewsAdapter
@@ -67,7 +69,6 @@ class Recorder:
         from src.ingestion.ratelimit import SharedRateLimiter
         from src.ingestion.registry import IngestionRegistry
 
-        settings = get_settings()
         recorded = 0
 
         for provider, endpoint, params in REQUESTS:
@@ -87,9 +88,26 @@ class Recorder:
                 registry.register_adapter(FredAdapter(api_key=key))
             else:
                 registry.register_adapter(MarketAdapter(provider, api_key=key))
-                registry.register_adapter(NewsAdapter(provider, api_key=key))
+                # Only register the news adapter for providers that actually serve
+                # news. Alpha Vantage is deliberately excluded (its NEWS_SENTIMENT
+                # endpoint returns vendor-computed sentiment), and constructing the
+                # adapter for it raises.
+                from src.ingestion.news_client import ENDPOINTS as NEWS_ENDPOINTS
 
-            with vcr.use_cassette(str(cassette), record_mode="once"):
+                if provider in NEWS_ENDPOINTS:
+                    registry.register_adapter(NewsAdapter(provider, api_key=key))
+
+            with vcr.use_cassette(
+                str(cassette),
+                record_mode="once",
+                # Credentials must never reach disk. Providers put keys in query
+                # params (Finnhub `token`, FMP/Alpha Vantage `apikey`) and
+                # Tiingo uses an Authorization header; an unfiltered cassette
+                # records the real key in the request URI. vcr applies the same
+                # filter on replay, so recorded and outgoing requests still match.
+                filter_query_parameters=["token", "apikey", "api_key", "apiKey"],
+                filter_headers=["authorization", "x-api-key", "api-key"],
+            ):
                 try:
                     registry.fetch(
                         _data_type(provider, endpoint),

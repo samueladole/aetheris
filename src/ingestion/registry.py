@@ -99,7 +99,9 @@ class IngestionRegistry:
     http: HttpClient = field(default_factory=RequestsHttpClient)
     activity_timeout_s: float = 30.0
     _adapter_state: dict[str, str] = field(default_factory=dict, init=False)
-    _adapters: dict[str, Any] = field(default_factory=dict, init=False)
+    # provider -> list of adapters: one provider can serve both market and
+    # news endpoints, so each shape needs its own registered adapter.
+    _adapters: dict[str, list[Any]] = field(default_factory=dict, init=False)
 
     # ------------------------------------------------------------------
     # Adapter wiring
@@ -114,17 +116,26 @@ class IngestionRegistry:
         if not provider:
             raise RegistryError("adapter must declare a `provider` attribute")
         self.providers.get(provider)  # validates against the spec §3.2.1 registry
-        self._adapters[provider] = adapter
+        self._adapters.setdefault(provider, [])
+        if adapter not in self._adapters[provider]:
+            self._adapters[provider].append(adapter)
 
-    def adapter_for(self, provider: str) -> Any:
-        """Handle the adapter for."""
-        try:
-            return self._adapters[provider]
-        except KeyError as exc:
-            raise RegistryError(
-                f"no adapter registered for {provider!r}; "
-                f"registered: {sorted(self._adapters) or 'none'}"
-            ) from exc
+    def _select_adapter(self, provider: str, endpoint: str) -> Any:
+        """The adapter that declares ``endpoint``, or ``None``.
+
+        Selecting on `can_handle` rather than "the adapter registered for this
+        provider" is what makes a multi-shape provider routable — finnhub, fmp,
+        and tiingo each serve both market and news endpoints. Keying by provider
+        alone meant the second registration silently overwrote the first.
+        """
+        for adapter in self._adapters.get(provider, []):
+            if adapter.can_handle(endpoint):
+                return adapter
+        return None
+
+    def adapters_for(self, provider: str) -> list[Any]:
+        """Every adapter registered for one provider."""
+        return list(self._adapters.get(provider, []))
 
     # ------------------------------------------------------------------
     # Adapter state machine (data-model.md §5)
@@ -315,8 +326,8 @@ class IngestionRegistry:
         self, spec: ProviderSpec, data_type: str, endpoint: str | None,
         params: Mapping[str, str],
     ) -> FetchRequest:
-        adapter = self._adapters.get(spec.name)
         target_endpoint = endpoint or data_type
+        adapter = self._select_adapter(spec.name, target_endpoint)
         if adapter is None:
             # No adapter registered: build a generic request so the cache can
             # still key on the data type. Useful for dry runs and status checks.
@@ -326,7 +337,7 @@ class IngestionRegistry:
         return adapter.build_request(target_endpoint, params)
 
     def _get(self, spec: ProviderSpec, request: FetchRequest) -> Any:
-        adapter = self._adapters.get(spec.name)
+        adapter = self._select_adapter(spec.name, request.endpoint)
         if adapter is None:
             raise RegistryError(
                 f"no adapter registered for {spec.name!r}; cannot issue a request"

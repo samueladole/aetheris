@@ -18,11 +18,15 @@ from collections.abc import Mapping
 from src.ingestion.base import AdapterError, FetchRequest
 
 # Base URLs per provider, from the spec §3.2.1 registry.
+#
+# Tiingo's base is the API root, not `/tiingo`: its paths are already
+# `/tiingo/daily/...`, `/tiingo/news`, and `/iex/...`. Including `/tiingo` in the base
+# produced `https://api.tiingo.com/tiingo/tiingo/daily`, a 404.
 BASE_URLS: dict[str, str] = {
     "alpha_vantage": "https://www.alphavantage.co/query",
     "finnhub": "https://finnhub.io/api/v1",
     "fmp": "https://financialmodelingprep.com/api/v3",
-    "tiingo": "https://api.tiingo.com/tiingo",
+    "tiingo": "https://api.tiingo.com",
 }
 
 # Endpoints each provider exposes, mirroring spec §3.2.1.
@@ -80,7 +84,13 @@ class MarketAdapter:
                 merged["token"] = self._api_key
         # FMP and Tiingo both use path + optional key.
         else:
-            url = f"{base}/{endpoint}"
+            # Tiingo identifies the instrument in the PATH, not query params:
+            # GET /tiingo/daily/{ticker}. Leaving it in the query returns 404.
+            if self.provider == "tiingo":
+                ticker = merged.pop("tickers", None)
+                url = f"{base}/{endpoint}/{ticker}" if ticker else f"{base}/{endpoint}"
+            else:
+                url = f"{base}/{endpoint}"
             if self._api_key and self.provider == "fmp":
                 merged.setdefault("apikey", self._api_key)
 

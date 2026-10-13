@@ -131,7 +131,7 @@ here is the spec's order, not an independent prioritisation.
 - [X] T038 [US2] Wire the cache-before-fetch check into `src/ingestion/registry.py` so a cached payload short-circuits the provider call and increments the cache-hit counter (FR-007)
 - [X] T039 [US2] Wire `aetheris ingest <provider> <endpoint> [--force] [--ttl SECONDS]` into `src/cli/main.py`, delegating to `src/ingestion/registry.py`
 - [X] T040 [US2] Instrument every fetch, cache decision, and fallback with spans and counters in `src/ingestion/registry.py` (FR-017, FR-018)
-- [ ] T041 [P] [US2] Record `vcrpy` cassette fixtures for all five providers in `tests/fixtures/cassettes/` so no CI test issues a live provider call (invariant A6)
+- [X] T041 [P] [US2] Record `vcrpy` cassette fixtures for all five providers in `tests/fixtures/cassettes/` so no CI test issues a live provider call (invariant A6)
 
 > **BLOCKED — T041**: recording requires live API keys for all five providers,
 > which are not available in this environment. Invariant A6 is *already
