@@ -282,7 +282,7 @@ before or after the subcommand.
 | `aetheris ingest` | Run one adapter and store the raw payload. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
 | `aetheris score` | Score literal `--text` and print the result. `--entity`, `--model`, `--temperature` |
 | `aetheris graph` | `upsert` (placeholder: counts raw payloads, writes nothing) and read-only `query` |
-| `aetheris evaluate` | Score summaries, drift, MLflow logging |
+| `aetheris evaluate` | Score summaries, drift, MLflow logging (placeholder: evaluates fixed sample sentences) |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
 | `aetheris status` | Provider health, quotas, cache hit ratio, workflow state |
@@ -610,6 +610,8 @@ count does not hide them.
 - **`aetheris score` reads only `--text`.** It cannot score ingested payloads,
   and it prints results rather than storing them. A code comment points to
   T065 for this, but T065 is the graph-write telemetry task.
+- **`aetheris evaluate` evaluates three hard-coded sample sentences**, not
+  scored data, so its drift and MLflow output says nothing about real runs.
 - **The point-in-time replay test is narrower than specified.** See
   [Point-in-time correctness](#point-in-time-correctness).
 - **The CLI query grammar differs from its contract.**
