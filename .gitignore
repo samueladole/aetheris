@@ -63,8 +63,10 @@ mlflow.db
 mlruns/
 mlartifacts/
 
-# Model weights & caches (downloaded, never committed)
-models/
+# Model weights & caches (downloaded, never committed). Anchored to the root:
+# an unanchored `models/` also hid tests/fixtures/models/, so the stub model the
+# test suite imports never reached CI.
+/models/
 .cache/huggingface/
 .huggingface/
 *.safetensors

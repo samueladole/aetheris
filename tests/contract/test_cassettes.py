@@ -8,6 +8,11 @@ YAML.
 
 These tests are the guard rail. They fail if a cassette containing a real
 credential is ever committed.
+
+Cassettes are git-ignored: they hold provider data that Finnhub, FMP, and
+Tiingo's free-tier terms forbid redistributing, and this repository is public.
+So each check loops over whatever cassettes exist rather than parametrizing on
+them, which keeps the collected test count the same in a clean checkout.
 """
 
 from __future__ import annotations
@@ -44,43 +49,45 @@ def _live_credentials() -> dict[str, str]:
 
 class TestNoCredentialInCassettes:
     """Test no credential in cassettes."""
-    @pytest.mark.parametrize("cassette", _cassettes(), ids=lambda p: p.name)
-    def test_cassette_has_no_live_credential(self, cassette):
-        """Test that cassette has no live credential."""
+
+    def test_no_cassette_has_a_live_credential(self):
+        """Test that no cassette contains a configured credential."""
         creds = _live_credentials()
         if not creds:
             pytest.skip("no credentials configured")
 
-        body = cassette.read_text(encoding="utf-8", errors="replace")
-        leaked = [name for name, key in creds.items() if key in body]
-        assert not leaked, (
-            f"{cassette.name} contains a live credential for: {leaked}. "
-            "Cassettes must filter credentials at record time — see "
-            "scripts/record_cassettes.py."
+        leaks = {}
+        for cassette in _cassettes():
+            body = cassette.read_text(encoding="utf-8", errors="replace")
+            leaked = [name for name, key in creds.items() if key in body]
+            if leaked:
+                leaks[cassette.name] = leaked
+        assert not leaks, (
+            f"cassettes contain live credentials: {leaks}. Cassettes must filter "
+            "credentials at record time — see scripts/record_cassettes.py."
         )
 
-    @pytest.mark.parametrize("cassette", _cassettes(), ids=lambda p: p.name)
-    def test_cassette_has_no_unredacted_token_param(self, cassette):
+    def test_no_cassette_has_an_unredacted_token_param(self):
         """A token-shaped value must not appear unredacted in any request URI."""
-        body = cassette.read_text(encoding="utf-8", errors="replace")
-        for param in SECRET_PARAMS:
-            # e.g. `?token=sk-abcdef123456` with a plausible key shape.
-            pattern = rf"[?&]{param}=[A-Za-z0-9_\-]{{16,}}"
-            match = re.search(pattern, body)
-            assert not match, (
-                f"{cassette.name} exposes {param} unredacted: {match.group(0)[:24]}..."
-            )
+        exposed = []
+        for cassette in _cassettes():
+            body = cassette.read_text(encoding="utf-8", errors="replace")
+            for param in SECRET_PARAMS:
+                # e.g. `?token=sk-abcdef123456` with a plausible key shape.
+                match = re.search(rf"[?&]{param}=[A-Za-z0-9_\-]{{16,}}", body)
+                if match:
+                    exposed.append(f"{cassette.name}: {match.group(0)[:24]}...")
+        assert not exposed, f"unredacted credential parameters: {exposed}"
 
-    @pytest.mark.parametrize("cassette", _cassettes(), ids=lambda p: p.name)
-    def test_cassette_has_no_auth_header_value(self, cassette):
-        """Test that cassette has no auth header value."""
-        body = cassette.read_text(encoding="utf-8", errors="replace")
-        for header in SECRET_HEADERS:
-            pattern = rf"{header}:\s*\S{{16,}}"
-            match = re.search(pattern, body, re.IGNORECASE)
-            assert not match, (
-                f"{cassette.name} exposes an {header} header value"
-            )
+    def test_no_cassette_has_an_auth_header_value(self):
+        """Test that no cassette records an auth header value."""
+        exposed = []
+        for cassette in _cassettes():
+            body = cassette.read_text(encoding="utf-8", errors="replace")
+            for header in SECRET_HEADERS:
+                if re.search(rf"{header}:\s*\S{{16,}}", body, re.IGNORECASE):
+                    exposed.append(f"{cassette.name}: {header}")
+        assert not exposed, f"cassettes expose auth header values: {exposed}"
 
 
 class TestRecordConfiguration:
@@ -104,10 +111,6 @@ class TestRecordConfiguration:
 
 class TestCassetteInventory:
     """Test cassette inventory."""
-    def test_cassettes_exist(self):
-        """Test that cassettes exist."""
-        cassettes = _cassettes()
-        assert cassettes, "no cassettes recorded — run scripts/record_cassettes.py"
 
     def test_every_provider_is_covered(self):
         """At least the four unrestricted providers must appear.
@@ -117,6 +120,11 @@ class TestCassetteInventory:
         tests/fixtures/cassettes/README.md). What is recorded must at minimum
         cover FRED, Alpha Vantage, and Finnhub, plus one of fmp/tiingo.
         """
+        if not _cassettes():
+            pytest.skip(
+                "no cassettes: they are git-ignored (provider redistribution "
+                "terms), so record them locally with scripts/record_cassettes.py"
+            )
         required = {"fred", "alpha_vantage", "finnhub"}
         optional = {"fmp", "tiingo"}
         all_providers = required | optional

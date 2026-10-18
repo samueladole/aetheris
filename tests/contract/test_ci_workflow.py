@@ -84,6 +84,35 @@ class TestLockfileReachesCi:
         )
 
 
+class TestTestsDoNotDependOnIgnoredFiles:
+    """A file the suite needs must reach CI's clean checkout."""
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+    def test_no_test_file_is_git_ignored(self):
+        """An ignored fixture passes locally and breaks collection in CI.
+
+        Recorded cassettes are the one exception: they hold provider data that
+        the free-tier terms forbid redistributing, so they stay local and the
+        tests that read them must not depend on their presence.
+        """
+        proc = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "tests/"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            pytest.skip("not a git checkout")
+        ignored = [
+            path
+            for path in proc.stdout.splitlines()
+            if "__pycache__" not in path
+            and not (path.startswith("tests/fixtures/cassettes/") and path.endswith(".yaml"))
+        ]
+        assert not ignored, f"git-ignored files under tests/ never reach CI: {ignored}"
+
+
 @requires_yaml
 class TestCpuOnlyTorch:
     """Every project install in every workflow resolves CPU-only torch."""
