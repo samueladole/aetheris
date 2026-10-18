@@ -22,8 +22,11 @@ jobs:
       - name: Create virtualenv
         run: uv venv --python 3.11 .venv
 
+      # The docs extra is needed because contract tests build the docs site.
+      # --torch-backend cpu: PyPI's Linux torch is the CUDA build, which pulls
+      # in NVIDIA's proprietary wheels. Aetheris is CPU-only (Principle I).
       - name: Install project
-        run: uv pip install --python .venv/bin/python -e ".[dev]"
+        run: uv pip install --python .venv/bin/python -e ".[dev,docs]" --torch-backend cpu
 
       # Principle I: fails on any non-permissive license (exit 3).
       # STRICT mode. The four accepted transitive deviations are recorded in
@@ -45,6 +48,10 @@ jobs:
       # Principle II: fails on any layer boundary violation
       - name: Import contracts (Principle II)
         run: .venv/bin/lint-imports
+
+      # The rendered accessibility gate tests drive a real browser.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Lint
         run: .venv/bin/ruff check src/ tests/
@@ -89,30 +96,18 @@ jobs:
         run: uv venv --python 3.11 .venv
 
       - name: Install project with docs extra
-        run: uv pip install --python .venv/bin/python -e ".[dev,docs]"
+        run: uv pip install --python .venv/bin/python -e ".[dev,docs]" --torch-backend cpu
 
       - name: Install Node accessibility tooling
-        run: npm ci --ignore-scripts || npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
-      # FR-006 / VR-1: fails when any public entity lacks a docstring. This is
-      # the real enforcement; mkdocstrings' show_if_no_docstring is only a
-      # safety net that would *hide* undocumented entities instead.
-      - name: Docstring gate (FR-006)
-        run: |
-          .venv/bin/ruff check \
-            --select D100,D101,D102,D103,D104,D105,D106,D107 src
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
 
-      - name: Build documentation site
-        run: .venv/bin/mkdocs build --strict
-
-      # VR-5 / FR-017: the site is publicly readable, so a credential in the
-      # output is a security exposure, not a cosmetic defect.
-      - name: Secret scan of built site
-        run: .venv/bin/python scripts/scan_secrets.py site/
-
-      # VR-4 / FR-019 / FR-020: two gates, static and rendered.
-      - name: Accessibility gate — structural
-        run: npx html-validate "site/**/*.html" --formatter stylish
-
-      - name: Accessibility gate — rendered
-        run: node scripts/check_a11y_rendered.js site/
+      # Every gate, in order: docstrings (FR-006), strict site build (FR-010),
+      # secret scan (FR-017), built-HTML repair, structural and rendered
+      # accessibility (FR-019, FR-020). Running the CLI rather than copying its
+      # steps keeps CI and local builds identical; a copied list once dropped
+      # the repair step and failed 209 accessibility checks that pass locally.
+      - name: Documentation gates
+        run: .venv/bin/aetheris docs build
