@@ -56,8 +56,10 @@ jobs:
       - name: Create virtualenv
         run: uv venv --python 3.11 .venv
 
+      # --torch-backend cpu: PyPI's Linux torch is the CUDA build, which pulls
+      # in NVIDIA's proprietary wheels. Aetheris is CPU-only (Principle I).
       - name: Install project with docs extra
-        run: uv pip install --python .venv/bin/python -e ".[dev,docs]"
+        run: uv pip install --python .venv/bin/python -e ".[dev,docs]" --torch-backend cpu
 
       - name: Install Node tooling from lockfile
         run: npm ci --ignore-scripts
