@@ -8,9 +8,10 @@ These amendments were surfaced by the implementation license gate
 stack selected in `plan.md` transitively depends on packages outside the
 permissive set that Principle I permits.
 
-Amendment A-001 is a **known, accepted deviation** pending ratification. Until
-this is ratified, the CI gate runs in `--lenient` mode by recorded decision
-(see `.github/workflows/ci.yml`).
+Amendment A-001 is a **known, accepted deviation** pending ratification. The CI
+gate runs in `--strict` mode with the A-001 packages exempted by name (see
+`.github/workflows/ci.yml`), so any other non-permissive or unidentifiable
+licence fails the build.
 
 ---
 
@@ -29,7 +30,7 @@ this is ratified, the CI gate runs in `--lenient` mode by recorded decision
 
 ### Rationale
 
-The four offenders are structurally unavoidable for the required capabilities:
+These offenders are structurally unavoidable for the required capabilities:
 
 | Package | License | Required by | Why unavoidable |
 |---|---|---|---|
@@ -37,6 +38,7 @@ The four offenders are structurally unavoidable for the required capabilities:
 | `certifi` | MPL-2.0 | `requests`, `httpx`, `httpcore`, `evidently` | The de-facto CA bundle for TLS verification in Python. Every HTTP client in the ecosystem depends on it; hand-rolling TLS trust is strictly worse security. |
 | `huey` | undetermined | MLflow 3.17.0 | Task queue for MLflow's model-serving components, which Aetheris does not use. |
 | `pathspec` | MPL-2.0 | nothing (orphaned) | Present in the resolved tree with no reverse dependency found; removable. |
+| `tqdm` | MPL-2.0 AND MIT | `transformers`, `huggingface_hub` (hard dependencies) | Added 2026-10-19. The gate previously read "MPL-2.0 AND MIT" as MIT through a substring match, so this was never reported. Unavoidable while the sentiment engine uses transformers; the same MPL-2.0 situation as `certifi`. |
 
 The practical alternative — dropping DBOS and MLflow entirely — would force
 re-specification of FR-001/FR-002/FR-003 (durable execution) and FR-019
