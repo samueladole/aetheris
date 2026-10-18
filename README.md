@@ -11,13 +11,15 @@ open-source-only constraint.
 
 ## Status
 
-Under active construction. The specification, plan, and task breakdown are
-complete, and the durable-execution and ingestion layers are implemented.
+Every task in both breakdowns is checked off, but **the pipeline does not run
+end to end yet**. All five layers are built and tested on their own; the steps
+that connect them are placeholders, and nothing writes to the knowledge graph
+outside tests. [Known gaps](#known-gaps) lists exactly what is missing.
 
 | Work item | Progress | Tasks |
 |---|---|---|
-| Pipeline (`src/`) | 80 / 81 | durable execution, ingestion, sentiment, graph |
-| Documentation site | 34 / 34 | complete — builds, deploys, gates enforce |
+| Pipeline (`src/`) | 81 / 81 | durable execution, ingestion, sentiment, graph, observability |
+| Documentation site | 34 / 34 | builds and gates enforce; publishing waits on GitHub Pages being enabled (see Known gaps) |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
 and **fails the build if any factual claim here is stale**. If you change
@@ -44,6 +46,7 @@ behaviour, expect that check to fail until you update the README.
 - [Design documents](#design-documents)
 - [Development](#development)
 - [Verification](#verification)
+- [Known gaps](#known-gaps)
 - [Open decisions](#open-decisions)
 
 ---
@@ -59,6 +62,10 @@ behaviour, expect that check to fail until you update the README.
 The pipeline runs as a **durable workflow**: on failure it resumes from the last
 completed step with bounded exponential backoff, and failed steps run
 compensating actions.
+
+That is the design. Today the workflow runs all five steps durably, but steps
+2–5 return zero counts instead of calling their layers. Each layer works when
+called directly; see [Known gaps](#known-gaps).
 
 ---
 
@@ -211,8 +218,14 @@ Rejected on licence grounds:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # Linux only
 pip install -e ".[dev]"
 ```
+
+**On Linux, install CPU-only torch first.** PyPI's Linux `torch` is the CUDA
+build, which pulls in NVIDIA's proprietary CUDA wheels, so a plain install
+breaks Principle I. With uv, `uv pip install -e ".[dev]" --torch-backend cpu`
+does both steps. macOS wheels are CPU-only already.
 
 ### First run — no credentials needed
 
@@ -249,24 +262,26 @@ Run `aetheris status` to see which providers are configured.
 ```bash
 aetheris run --trigger schedule
 ```
-```
 
 ---
 
 ## CLI
 
 **9 commands**: `run`, `ingest`, `score`, `graph`, `evaluate`, `status`, `version`,
-`check-licenses`, and `docs`. The `query` command is specified but not yet implemented (task T064).
+`check-licenses`, and `docs`. Read-only graph queries run as
+`aetheris graph query entity|sentiment|edges|influencers|assets`. The CLI
+contract specifies them as a top-level `aetheris query`; the implementation
+nests them under `graph`.
 
 Global options (`--config`, `--db`, `--raw`, `--json`, `--trace`) work either
 before or after the subcommand.
 
 | Command | Purpose |
 |---|---|
-| `aetheris run` | Execute the durable pipeline. `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
-| `aetheris ingest` | Run one adapter. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
-| `aetheris score` | Score text. `--entity`, `--model`, `--temperature`, `--text` |
-| `aetheris graph` | `upsert` (align + idempotent write) and read-only `query` |
+| `aetheris run` | Execute the durable pipeline (data steps are placeholders). `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
+| `aetheris ingest` | Run one adapter and store the raw payload. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
+| `aetheris score` | Score literal `--text` and print the result. `--entity`, `--model`, `--temperature` |
+| `aetheris graph` | `upsert` (placeholder: counts raw payloads, writes nothing) and read-only `query` |
 | `aetheris evaluate` | Score summaries, drift, MLflow logging |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
@@ -321,6 +336,10 @@ Traversal is capped at two hops; deeper returns ``UnsupportedTraversalError``
 rather than silently truncating. Same queries from the CLI:
 `aetheris graph query sentiment --entity ... --start ... --json`.
 
+Nothing in the pipeline writes to the graph yet, so these queries return empty
+results unless you populate it yourself through `GraphRepository` in
+`src/graph/repository.py`.
+
 Contracts: [`graph-api.md`](.specify/specs/contracts/graph-api.md) ·
 [`sentiment-schema.md`](.specify/specs/contracts/sentiment-schema.md) ·
 [`adapter-protocol.md`](.specify/specs/contracts/adapter-protocol.md).
@@ -334,7 +353,8 @@ Generated reference for everything implemented: `aetheris docs build`, then open
 
 MkDocs + Material, with the API reference **generated from source docstrings**.
 Navigation is generated too, so adding a module requires no manual edit. The
-site publishes automatically to GitHub Pages on every push to `main`.
+deploy workflow publishes to GitHub Pages on every push to `main` once Pages is
+enabled for the repository (see [Known gaps](#known-gaps)).
 
 ```bash
 pip install -e ".[docs]"
@@ -409,10 +429,17 @@ state on January 31. Conflating **observation time** with **availability time**
 is the classic way a pipeline leaks future information and silently invalidates
 every downstream query.
 
-This rule is **specified but not yet implemented**. The alignment layer and the
-deterministic replay test are tasks T060 and T054, both in the knowledge graph
-user story. Until they land, the invariant is enforced by review rather than by
-a test — exactly the gap the remaining tasks close.
+The join itself is implemented in `src/graph/align.py` and tested in
+`tests/unit/test_align.py`: a value released after the query time is invisible
+to it, timezone-naive times are refused, and aligning the same inputs twice
+gives identical rows. Two parts of the guarantee are still missing:
+
+- **No write path calls the join.** The graph repository refuses
+  timezone-naive timestamps, but no code routes data through `align()`
+  outside its tests.
+- **There is no end-to-end replay test.** T054 calls for an integration test
+  replaying a cassette to a byte-identical *graph* state. The unit tests above
+  cover alignment only.
 
 ---
 
@@ -442,10 +469,15 @@ Five non-negotiable principles: [`.specify/memory/constitution.md`](.specify/mem
 
 **Every PR must pass** `aetheris check-licenses` (Principle I) and `lint-imports`
 (Principle II). Accepted deviations are documented in
-[`constitution-amendments.md`](.specify/memory/constitution-amendments.md) — four
+[`constitution-amendments.md`](.specify/memory/constitution-amendments.md) — five
 non-permissive **transitive** dependencies (`psycopg`, `psycopg-binary`,
-`certifi`, `huey`) and `pathspec`, all accepted by explicit decision rather than
-silently. `--no-exemptions` re-checks every one.
+`certifi`, `huey`, `tqdm`) and `pathspec`, all accepted by explicit decision
+rather than silently. `--no-exemptions` re-checks every one.
+
+The gate fails closed: a licence it cannot identify fails strict mode rather
+than passing. Where a package's metadata names no licence, the licence is
+verified by hand against its LICENSE file and recorded in `VERIFIED_LICENSES`
+in `src/cli/licenses.py` (currently `skops`), and every report lists it.
 
 ---
 
@@ -538,7 +570,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **418 tests pass** · **29 API reference pages**
+**5 import contracts kept** · **470 tests** · **29 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration
@@ -557,6 +589,36 @@ fails the build.
 **Two licence gates, not one.** The Python gate walks installed Python
 distributions; the Node gate walks `node_modules`. Neither alone covers the
 toolchain, and a gate that silently skips half of it is not a gate.
+
+---
+
+## Known gaps
+
+Every task in [`tasks.md`](.specify/specs/tasks.md) is checked off, but these
+deliverables are missing or partly built. They are listed here so the task
+count does not hide them.
+
+- **The durable pipeline is a shell.** `aetheris run` executes all five steps
+  with checkpointing and retries, but the ingest, sentiment, graph, and
+  evaluation steps in `src/orchestration/workflows.py` return zero counts
+  instead of calling their layers.
+- **Nothing writes to the knowledge graph.** Only tests call the upsert
+  methods on `GraphRepository`. `aetheris graph upsert` counts eligible raw
+  payloads and exits without aligning or writing anything (T064).
+- **Alignment is not on any write path.** `src/graph/align.py` implements the
+  as-of join (T060), but nothing outside its tests calls it.
+- **`aetheris score` reads only `--text`.** It cannot score ingested payloads,
+  and it prints results rather than storing them. A code comment points to
+  T065 for this, but T065 is the graph-write telemetry task.
+- **The point-in-time replay test is narrower than specified.** See
+  [Point-in-time correctness](#point-in-time-correctness).
+- **The CLI query grammar differs from its contract.**
+  [`cli.md`](.specify/specs/contracts/cli.md) specifies a top-level
+  `aetheris query` with `assets --limit N`; the CLI has `aetheris graph query`
+  with `--top N`.
+- **GitHub Pages is not enabled for the repository.** The deploy workflow
+  builds and gates the site, but its publish step has no Pages site to deploy
+  to until Pages is switched on with GitHub Actions as the source.
 
 ---
 
