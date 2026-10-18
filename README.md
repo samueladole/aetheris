@@ -19,7 +19,7 @@ outside tests. [Known gaps](#known-gaps) lists exactly what is missing.
 | Work item | Progress | Tasks |
 |---|---|---|
 | Pipeline (`src/`) | 81 / 81 | durable execution, ingestion, sentiment, graph, observability |
-| Documentation site | 34 / 34 | builds and gates enforce; publishing waits on GitHub Pages being enabled (see Known gaps) |
+| Documentation site | 34 / 34 | complete — builds, gates enforce, publishes to GitHub Pages on push to main |
 
 This README is kept in sync automatically: CI runs `scripts/check_readme_sync.py`
 and **fails the build if any factual claim here is stale**. If you change
@@ -353,8 +353,8 @@ Generated reference for everything implemented: `aetheris docs build`, then open
 
 MkDocs + Material, with the API reference **generated from source docstrings**.
 Navigation is generated too, so adding a module requires no manual edit. The
-deploy workflow publishes to GitHub Pages on every push to `main` once Pages is
-enabled for the repository (see [Known gaps](#known-gaps)).
+deploy workflow publishes to <https://samueladole.github.io/aetheris/> on every
+push to `main`.
 
 ```bash
 pip install -e ".[docs]"
@@ -616,9 +616,6 @@ count does not hide them.
   [`cli.md`](.specify/specs/contracts/cli.md) specifies a top-level
   `aetheris query` with `assets --limit N`; the CLI has `aetheris graph query`
   with `--top N`.
-- **GitHub Pages is not enabled for the repository.** The deploy workflow
-  builds and gates the site, but its publish step has no Pages site to deploy
-  to until Pages is switched on with GitHub Actions as the source.
 
 ---
 
