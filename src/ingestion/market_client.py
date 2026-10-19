@@ -85,10 +85,12 @@ class MarketAdapter:
         # FMP and Tiingo both use path + optional key.
         else:
             # Tiingo identifies the instrument in the PATH, not query params:
-            # GET /tiingo/daily/{ticker}. Leaving it in the query returns 404.
+            # GET /tiingo/daily/{ticker}/prices. Leaving it in the query returns 404.
             if self.provider == "tiingo":
                 ticker = merged.pop("tickers", None)
                 url = f"{base}/{endpoint}/{ticker}" if ticker else f"{base}/{endpoint}"
+                if ticker and endpoint == "tiingo/daily":
+                    url += "/prices"  # bare /tiingo/daily/{ticker} is metadata
             else:
                 url = f"{base}/{endpoint}"
             if self._api_key and self.provider == "fmp":

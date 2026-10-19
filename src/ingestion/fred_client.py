@@ -46,6 +46,11 @@ class FredAdapter:
         merged = {
             "file_type": "json",
             "sort_order": "asc",
+            # Initial-release vintages: output_type 4 over the full realtime
+            # range returns each observation as first published.
+            "output_type": "4",
+            "realtime_start": "1776-07-04",
+            "realtime_end": "9999-12-31",
             **dict(params),
         }
         series_id = merged.get("series_id")
