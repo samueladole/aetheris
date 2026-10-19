@@ -149,3 +149,95 @@ class TestTTLCache:
         cache = TTLCache(store, default_ttl_s=100)
         assert cache.ttl_for() == 100
         assert cache.ttl_for(5) == 5
+
+
+def test_request_params_round_trip(tmp_path):
+    """Request parameters survive a store and a get."""
+    store = RawPayloadStore(str(tmp_path / "raw.db"))
+    p, _ = store.store(
+        provider="fred",
+        endpoint="series/observations",
+        request_hash="h",
+        body=b"{}",
+        request_params={"series_id": "GDP"},
+    )
+    assert store.get(p.payload_id).request_params == {"series_id": "GDP"}
+    store.close()
+
+
+def test_existing_database_gains_the_column(tmp_path):
+    """A pre-change database is upgraded in place and old rows read back with None."""
+    import sqlite3
+
+    path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE raw_payload (
+            payload_id TEXT PRIMARY KEY, provider TEXT NOT NULL,
+            endpoint TEXT NOT NULL, request_hash TEXT NOT NULL,
+            schema_version INTEGER NOT NULL, body BLOB NOT NULL,
+            fetched_at TEXT NOT NULL, ttl_seconds INTEGER
+        );
+        INSERT INTO raw_payload VALUES
+            ('old-id', 'fred', 'ep', 'h', 1, x'7b7d', '2026-01-01T00:00:00+00:00', NULL);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    store = RawPayloadStore(path)
+    old = store.get("old-id")
+    assert old is not None
+    assert old.request_params is None
+    store.close()
+
+
+def test_latest_by_endpoint_returns_newest_per_request(tmp_path):
+    """Only the newest payload per request hash is returned, newest first."""
+    from datetime import datetime
+
+    store = RawPayloadStore(str(tmp_path / "raw.db"))
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    for h, offset in (("a", 0), ("a", 2), ("b", 1)):
+        store.store(
+            provider="fred",
+            endpoint="e",
+            request_hash=h,
+            body=b"{}",
+            fetched_at=t0 + timedelta(hours=offset),
+        )
+    result = store.latest_by_endpoint("fred", "e")
+    assert [(r.request_hash, r.fetched_at) for r in result] == [
+        ("a", t0 + timedelta(hours=2)),
+        ("b", t0 + timedelta(hours=1)),
+    ]
+    store.close()
+
+
+def test_registry_never_persists_credentials(tmp_path):
+    """The stored params are the caller's, never the adapter-merged credentials."""
+    from src.ingestion.base import HttpResponse
+    from src.ingestion.market_client import MarketAdapter
+    from src.ingestion.ratelimit import SharedRateLimiter
+    from src.ingestion.registry import IngestionRegistry
+
+    class Http:
+        def get(self, url, *, params, headers, timeout):
+            """Return a canned quote."""
+            return HttpResponse(200, b'{"c":1}', {})
+
+    store = RawPayloadStore(str(tmp_path / "raw.db"))
+    reg = IngestionRegistry(
+        payload_store=store,
+        cache=TTLCache(store, default_ttl_s=3600),
+        http=Http(),
+        rate_limiter=SharedRateLimiter(),
+        activity_timeout_s=1.0,
+    )
+    reg.register_adapter(MarketAdapter("finnhub", api_key="secret-key-123456"))
+    outcome = reg.fetch("prices", endpoint="quote", params={"symbol": "AAPL"})
+    stored = store.get(outcome.payload.payload_id)
+    assert stored.request_params == {"symbol": "AAPL"}
+    assert all("secret-key-123456" not in v for v in stored.request_params.values())
+    store.close()

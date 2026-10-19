@@ -298,6 +298,9 @@ class IngestionRegistry:
                         body=payload.body,
                         fetched_at=payload.fetched_at,
                         ttl_seconds=payload.ttl_seconds,
+                        # The caller's params only: request.params is adapter-merged
+                        # and carries credentials.
+                        request_params=params,
                     )
                     payload = stored
                     if self.cache is not None:
