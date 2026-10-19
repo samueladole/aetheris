@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.graph.align import Observation
+from src.graph.align import AlignmentError, Observation
 from src.graph.edges import (
     close_available_at,
     correlation_edges,
@@ -228,7 +228,8 @@ def test_release_after_at_is_not_seen() -> None:
     macro, prices = _influence_fixture(14)
     at = datetime(_day(10).year, _day(10).month, _day(10).day, 12, tzinfo=UTC)
     edges = influence_edges(macro, prices, at=at, window_days=730, min_releases=2)
-    assert all(e.observation_count <= 9 for e in edges)
+    assert len(edges) == 1
+    assert edges[0].observation_count == 8
 
 
 def test_edges_are_deterministic() -> None:
@@ -237,3 +238,25 @@ def test_edges_are_deterministic() -> None:
     assert influence_edges(macro, prices, at=AT, window_days=730) == influence_edges(
         macro, prices, at=AT, window_days=730
     )
+
+
+def test_naive_at_is_rejected() -> None:
+    """A timezone-naive as-of time raises AlignmentError even with empty inputs."""
+    naive = datetime(2026, 12, 31)
+    with pytest.raises(AlignmentError):
+        correlation_edges({}, at=naive, window_days=730)
+    with pytest.raises(AlignmentError):
+        influence_edges({}, {}, at=naive, window_days=730)
+
+
+def test_edges_carry_utc_times() -> None:
+    """A New York as-of time is converted so edge datetimes have a zero offset."""
+    closes = _wavy(30)
+    at = datetime(2026, 12, 30, 12, tzinfo=NY)
+    edges = correlation_edges(
+        {"A": _prices(closes), "B": _prices(closes)}, at=at, window_days=730
+    )
+    assert edges[0].computed_at == at
+    for stamp in (edges[0].computed_at, edges[0].valid_from, edges[0].valid_to):
+        assert stamp is not None
+        assert stamp.utcoffset() == timedelta(0)

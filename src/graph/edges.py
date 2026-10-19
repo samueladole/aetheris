@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from itertools import combinations
 from zoneinfo import ZoneInfo
 
-from src.graph.align import Observation
+from src.graph.align import AlignmentError, Observation
 from src.graph.schema import GraphEdge, RelationType
 
 _NY = ZoneInfo("America/New_York")
@@ -87,6 +87,16 @@ def _closes_by_day(observations: Sequence[Observation]) -> dict[date, float]:
     return closes
 
 
+def _require_utc(at: datetime) -> datetime:
+    # VR-5: the as-of time must be unambiguous; edges always carry UTC.
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise AlignmentError(
+            "as-of time is timezone-naive. The no-lookahead invariant cannot be "
+            "enforced without an unambiguous clock."
+        )
+    return at.astimezone(UTC)
+
+
 def _edge(
     src: str,
     dst: str,
@@ -117,6 +127,7 @@ def correlation_edges(
     min_observations: int = 20,
 ) -> list[GraphEdge]:
     """CORRELATES_WITH edges between assets from shared-day log returns."""
+    at = _require_utc(at)
     start = at - timedelta(days=window_days)
     closes = {
         asset: _closes_by_day(_in_window(series, start, at))
@@ -145,6 +156,7 @@ def influence_edges(
     min_releases: int = 8,
 ) -> list[GraphEdge]:
     """INFLUENCES edges from indicator release changes to the next price move."""
+    at = _require_utc(at)
     start = at - timedelta(days=window_days)
     price_series = {
         asset: [
