@@ -42,10 +42,21 @@ def test_fred_missing_values_and_repeats_are_dropped():
     ]
 
 
+def test_fred_first_release_wins_regardless_of_row_order():
+    """The earliest vintage wins even when a later one is listed first."""
+    body = (
+        b'{"observations": [{"realtime_start":"2026-02-14","date":"2026-01-01","value":"2.0"},'
+        b'{"realtime_start":"2026-02-13","date":"2026-01-01","value":"1.0"}]}'
+    )
+    assert parse_fred_observations(body) == [
+        MacroPoint(date(2026, 1, 1), date(2026, 2, 13), 1.0)
+    ]
+
+
 def test_tiingo_uses_adjusted_close():
     """Tiingo prices use adjClose and the calendar day."""
     pts = parse_tiingo_prices(FIXTURE("tiingo_aapl_prices.json"))
-    assert pts[0] == PricePoint(date(2026, 9, 1), 325.13)
+    assert pts[0] == PricePoint(date(2026, 9, 1), 325.13)  # close is 650.26 in the fixture
 
 
 def test_profile_parses_name_and_currency():

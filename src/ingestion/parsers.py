@@ -76,27 +76,22 @@ def _rows(body: bytes, key: str | None) -> list[Any]:
 
 def parse_fred_observations(body: bytes) -> list[MacroPoint]:
     """Parse FRED observations, dropping missing values and later revisions."""
-    points: list[MacroPoint] = []
-    seen: set[date] = set()
+    earliest: dict[date, MacroPoint] = {}
     try:
         for row in _rows(body, "observations"):
             if row["value"] == ".":
                 continue
             observed = date.fromisoformat(row["date"])
-            if observed in seen:
-                continue
-            seen.add(observed)
-            points.append(
-                MacroPoint(
-                    observed,
-                    date.fromisoformat(row["realtime_start"]),
-                    float(row["value"]),
-                )
-            )
+            released = date.fromisoformat(row["realtime_start"])
+            kept = earliest.get(observed)
+            # First release wins, whatever order the vintages arrive in.
+            if kept is None or released < kept.released_on:
+                earliest[observed] = MacroPoint(observed, released, float(row["value"]))
     except (KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, ParseError):
             raise
         raise ParseError(f"malformed FRED observation: {exc!r}") from exc
+    points = [earliest[d] for d in sorted(earliest)]
     return points
 
 
