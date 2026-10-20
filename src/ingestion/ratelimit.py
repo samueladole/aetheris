@@ -78,6 +78,13 @@ class TokenBucket:
                 )
             time.sleep(min(wait_s, 0.5))
 
+    def seconds_until(self, cost: float = 1.0) -> float:
+        """Seconds until ``cost`` tokens are available (0 when they already are)."""
+        with self._lock:
+            self._refill(time.monotonic())
+            deficit = cost - self._tokens
+            return max(0.0, deficit / self.refill_per_second)
+
     def available(self) -> float:
         """Handle the available."""
         with self._lock:
@@ -85,34 +92,65 @@ class TokenBucket:
             return self._tokens
 
 
+def _windows(spec: ProviderSpec) -> tuple[tuple[int, float], ...]:
+    """The ``(quota, window_seconds)`` pairs a provider declares, or 60/minute."""
+    declared = (
+        (spec.requests_per_minute, 60.0),
+        (spec.requests_per_hour, 3600.0),
+        (spec.requests_per_day, 86400.0),
+    )
+    windows = tuple((quota, seconds) for quota, seconds in declared if quota is not None)
+    return windows or ((60, 60.0),)
+
+
 class SharedRateLimiter:
-    """One bucket per provider, shared across all worker threads."""
+    """One bucket per declared quota window per provider, shared across threads."""
 
     def __init__(self) -> None:
         """Initialise the instance."""
-        self._buckets: dict[str, TokenBucket] = {}
+        self._buckets: dict[str, tuple[TokenBucket, ...]] = {}
         self._lock = threading.Lock()
 
-    def bucket_for(self, spec: ProviderSpec) -> TokenBucket:
-        """Handle the bucket for."""
+    def buckets_for(self, spec: ProviderSpec) -> tuple[TokenBucket, ...]:
+        """The provider's buckets: one per declared minute/hour/day quota."""
         key = spec.budget_key()
         with self._lock:
-            bucket = self._buckets.get(key)
-            if bucket is None:
-                per_minute = spec.effective_minute_limit()
-                bucket = TokenBucket(capacity=per_minute, refill_per_second=per_minute / 60.0)
-                self._buckets[key] = bucket
-            return bucket
+            buckets = self._buckets.get(key)
+            if buckets is None:
+                buckets = tuple(
+                    TokenBucket(capacity=quota, refill_per_second=quota / seconds)
+                    for quota, seconds in _windows(spec)
+                )
+                self._buckets[key] = buckets
+            return buckets
 
     def acquire(self, spec: ProviderSpec, *, timeout_s: float = 30.0) -> AcquireResult:
-        """Block until the provider's bucket grants one request."""
-        return self.bucket_for(spec).acquire(1.0, timeout_s=timeout_s)
+        """Take one token from every window of the provider, or from none.
+
+        Blocks until all windows can grant together; raises :class:`TimeoutError`
+        after ``timeout_s``. The check and the take happen under one lock, so a
+        token is never spent in one window while another is empty.
+        """
+        buckets = self.buckets_for(spec)
+        deadline = time.monotonic() + timeout_s
+        while True:
+            with self._lock:
+                wait_s = max(b.seconds_until(1.0) for b in buckets)
+                if wait_s <= 0.0:
+                    results = [b.try_acquire(1.0) for b in buckets]
+                    tightest = min(results, key=lambda r: r.remaining)
+                    return AcquireResult(True, 0.0, tightest.remaining, int(tightest.limit))
+            if time.monotonic() + wait_s > deadline:
+                raise TimeoutError(
+                    f"Timed out waiting {timeout_s}s for a {spec.name} rate-limit slot"
+                )
+            time.sleep(min(wait_s, 0.5))
 
     def available(self, spec: ProviderSpec) -> float:
-        """Handle the available."""
-        return self.bucket_for(spec).available()
+        """The fewest tokens left across the provider's windows."""
+        return min(b.available() for b in self.buckets_for(spec))
 
     def snapshot(self) -> dict[str, float]:
         """Current remaining capacity per provider (for `aetheris status`)."""
         with self._lock:
-            return {k: b.available() for k, b in self._buckets.items()}
+            return {k: min(b.available() for b in bs) for k, bs in self._buckets.items()}
