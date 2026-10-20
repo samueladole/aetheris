@@ -730,8 +730,9 @@ def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
     """`aetheris evaluate` — evaluate the graph's recent sentiment and its drift (T073).
 
     The evaluated items are the SentimentMetric rows published in the last 24
-    hours, or since ``--since``. Drift is measured against the scores of the
-    previous 7 days; with ``--entity``, that entity's scores only.
+    hours, or since ``--since``. Drift is measured against the other scores of
+    the previous 7 days, filtered by ``--entity`` and ``--min-confidence`` like
+    the evaluated items.
     """
     from src.graph.queries import sentiment_scores
     from src.graph.schema import GraphDatabase
@@ -772,6 +773,7 @@ def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
                 at=at,
                 drift_threshold=args.drift_threshold,
                 entity_id=args.entity,
+                min_confidence=args.min_confidence,
             )
 
     result, status = report["evaluation"], report["mlflow"]

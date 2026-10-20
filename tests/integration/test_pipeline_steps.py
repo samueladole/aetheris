@@ -521,3 +521,20 @@ def test_evaluation_for_one_entity_uses_only_its_history(tmp_path, db, monkeypat
     assert result["evaluation"]["entity_id"] == AAPL
     assert result["evaluation"]["items_scored"] == len(current) > 0
     assert result["evaluation"]["drift_score"] is None
+
+
+def test_evaluation_reference_meets_the_confidence_floor(tmp_path, db, monkeypatch):
+    """With ``min_confidence`` a less confident score is not a reference either."""
+    monkeypatch.chdir(tmp_path)
+    _, _, s, repo, _ = _integrate(tmp_path, db)
+    payloads = sorted((i["payload"] for i in s["scored"]), key=lambda p: p["confidence"])
+    low, high = payloads[0], payloads[-1]
+    assert low["confidence"] < high["confidence"]
+    floor = (low["confidence"] + high["confidence"]) / 2
+    current = [p for p in payloads if p["confidence"] >= floor]
+
+    unfiltered = run_evaluation(db, current, at=NOW)
+    floored = run_evaluation(db, current, at=NOW, min_confidence=floor)
+
+    assert unfiltered["evaluation"]["drift_score"] is not None
+    assert floored["evaluation"]["drift_score"] is None

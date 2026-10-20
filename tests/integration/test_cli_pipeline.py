@@ -211,6 +211,8 @@ def test_evaluate_options_select_the_rows(paths, capsys, monkeypatch):
     assert (aapl["items_scored"], aapl["entity_id"]) == (written, AAPL)
     assert msft["items_scored"] == 0
     assert confident["items_scored"] == 1
+    # The row the filter drops is not a reference either: there is no earlier history.
+    assert (confident["drift_score"], confident["drift_detected"]) == (None, False)
     assert next_day["items_scored"] == 0
     assert since["items_scored"] == written
 

@@ -511,12 +511,17 @@ def run_evaluation(
     reference_days: int = 7,
     drift_threshold: float = 0.1,
     entity_id: str | None = None,
+    min_confidence: float = 0.0,
 ) -> dict:
     """Evaluate the current scores and their drift from the graph's recent history.
 
     The reference is every score in ``[at - reference_days, at)`` except the
     current items' own metrics. With no reference scores ``drift_score`` is
     ``None``, because there is nothing to drift from.
+
+    ``entity_id`` and ``min_confidence`` apply to the reference only; a caller
+    that filters ``current`` passes the same filters, so the scores it dropped
+    are not compared against the ones it kept.
 
     Args:
         db: The graph database to read history from.
@@ -527,6 +532,8 @@ def run_evaluation(
         drift_threshold: Mean polarity shift that counts as drift.
         entity_id: Evaluate one entity: the reference keeps only its scores and
             the evaluation is labelled with it. ``None`` means every entity.
+        min_confidence: The reference keeps only scores at or above this
+            confidence.
 
     Returns:
         ``{"evaluation": Evaluation.as_dict(), "mlflow": status}``.
@@ -539,6 +546,7 @@ def run_evaluation(
         for row in history
         if row["metric_id"] not in current_ids
         and (entity_id is None or row["entity_id"] == entity_id)
+        and row["confidence"] >= min_confidence
     ]
     evaluation, status = compute_drift_report(
         [dict(item) for item in current],
