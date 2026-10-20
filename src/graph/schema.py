@@ -302,6 +302,8 @@ class GraphDatabase:
                 "sentiment_metric",
                 "graph_edge",
                 "macro_observation",
+                "sentiment_observation",
+                "scoring_lineage",
             ]
             return {
                 t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])

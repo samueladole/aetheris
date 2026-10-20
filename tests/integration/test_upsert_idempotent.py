@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 import duckdb
 import pytest
 
+from src.graph.align import Observation
 from src.graph.repository import GraphRepository
 from src.graph.schema import (
     Asset,
@@ -147,6 +148,47 @@ class TestSentimentIdempotency:
         repo.upsert_sentiment_metric(_metric("m1"))
         repo.upsert_sentiment_metric(_metric("m2"))
         assert repo.counts()["sentiment_metric"] == 2
+
+
+def _provenance(repo, metric_id: str = "m1", payload_id: str = "finnhub:/news:h:t") -> None:
+    repo.record_sentiment_provenance(
+        metric_id,
+        payload_id=payload_id,
+        text_hash="a" * 64,
+        model_id="stub@0",
+        observed_at=_ts(2026, 10, 10, 14, 30),
+        available_at=_ts(2026, 10, 10, 14, 30),
+    )
+
+
+class TestObservationAndLineageIdempotency:
+    """Macro observations and sentiment provenance are written once per key."""
+
+    def test_same_macro_observation_upserts_once(self, repo):
+        """One row per (indicator_code, observed_at)."""
+        obs = Observation(326.588, _ts(2026, 1, 1), _ts(2026, 2, 13, 13, 30))
+        repo.upsert_macro_observation("FRED:CPIAUCSL", obs)
+        repo.upsert_macro_observation("FRED:CPIAUCSL", obs)
+        repo.upsert_macro_observation("FRED:UNRATE", obs)
+        assert repo.counts()["macro_observation"] == 2
+
+    def test_provenance_is_recorded_once_per_metric(self, repo):
+        """VR-7 rows are keyed by metric_id and keep the first payload."""
+        repo.upsert_sentiment_metric(_metric())
+        _provenance(repo, payload_id="first")
+        _provenance(repo, payload_id="second")
+        counts = repo.counts()
+        assert counts["sentiment_observation"] == counts["scoring_lineage"] == 1
+        assert repo.db.execute("SELECT payload_id FROM scoring_lineage").fetchall() == [
+            ("first",)
+        ]
+
+    def test_metric_with_provenance_can_be_upserted_again(self, repo):
+        """A re-run must not update a metric its observation row references."""
+        repo.upsert_sentiment_metric(_metric())
+        _provenance(repo)
+        repo.upsert_sentiment_metric(_metric())
+        assert repo.counts()["sentiment_metric"] == 1
 
 
 class TestEdgeIdempotency:

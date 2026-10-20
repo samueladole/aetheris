@@ -74,6 +74,33 @@ def sentiment_series(
     )
 
 
+def sentiment_scores(
+    db: GraphDatabase,
+    *,
+    start: datetime,
+    end: datetime,
+) -> list[dict[str, Any]]:
+    """Every entity's sentiment scores in the half-open window ``[start, end)``.
+
+    Rows carry ``metric_id``, ``entity_id``, ``score``, and ``confidence``, ordered
+    by timestamp then ``metric_id`` so the result never depends on storage order.
+    Evaluation reads this as its drift reference.
+    """
+    start, end = _as_utc(start), _as_utc(end)
+    if start >= end:
+        raise QueryError(
+            f"invalid window: start {start.isoformat()} is not before end "
+            f"{end.isoformat()}"
+        )
+    return _rows(
+        db,
+        "SELECT metric_id, entity_id, score, confidence FROM sentiment_metric"
+        " WHERE timestamp >= ? AND timestamp < ?"
+        " ORDER BY timestamp ASC, metric_id ASC",
+        [start, end],
+    )
+
+
 def edges_from(
     db: GraphDatabase,
     node: str,
@@ -256,6 +283,7 @@ __all__ = [
     "edges_to",
     "get_entity",
     "list_assets",
+    "sentiment_scores",
     "sentiment_series",
     "top_influencers",
     "two_hop_path",

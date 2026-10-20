@@ -13,7 +13,6 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
 
 from src.cli import licenses
 from src.config.settings import ConfigError, Settings, get_settings
@@ -749,35 +748,11 @@ def _parse_params(pairs: list[str]) -> dict[str, str]:
     return params
 
 
-def _build_adapters(settings: Settings, provider: str) -> list[Any]:
-    """Instantiate the concrete adapter(s) for ``provider``.
-
-    Adapters contain no retry logic (invariant A3); they only shape requests.
-    A single provider may back both market data and news, so both adapters are
-    returned and the registry picks whichever matches the endpoint.
-    """
-    from src.ingestion.fred_client import FredAdapter
-    from src.ingestion.market_client import MarketAdapter
-    from src.ingestion.news_client import NewsAdapter
-
-    creds = settings.provider_credentials()
-    key = creds.get(provider)
-
-    if provider == "fred":
-        return [FredAdapter(api_key=key)]
-    if provider in {"alpha_vantage", "finnhub", "fmp", "tiingo"}:
-        return [
-            MarketAdapter(provider, api_key=key),
-            NewsAdapter(provider, api_key=key),
-        ]
-    raise ConfigError(f"unknown provider {provider!r}")
-
-
 def _cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
     """`aetheris ingest` — run one adapter through the registry (T039)."""
     from src.config.providers import get_registry
     from src.ingestion.base import ProviderUnavailable
-    from src.ingestion.registry import build_registry
+    from src.orchestration.wiring import build_ingestion_registry
 
     registry_spec = get_registry()
     try:
@@ -800,19 +775,9 @@ def _cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
-    reg = build_registry(
-        raw_db_path=settings.raw_db_path,
-        default_ttl_s=settings.cache_default_ttl_s,
-        activity_timeout_s=settings.activity_timeout_s,
-    )
-
-    # Register the adapter(s) for the requested provider.
-    try:
-        for adapter in _build_adapters(settings, args.provider):
-            reg.register_adapter(adapter)
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_USAGE
+    # Every provider's adapters are registered, so a failing provider falls
+    # back to the next one that declares the same endpoint (FR-020).
+    reg = build_ingestion_registry(settings)
 
     data_type = args.data_type or _infer_data_type(args.provider, args.endpoint)
 
