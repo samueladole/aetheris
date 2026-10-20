@@ -182,6 +182,52 @@ class TestFallbackOrder:
         assert outcome.attempts == 1
 
 
+class TestRequestSpecificClientErrors:
+    """A 400/404/422 fails one request; it does not disable the provider."""
+
+    @pytest.mark.parametrize("status", [400, 404, 422])
+    def test_a_not_found_symbol_does_not_exhaust_the_provider(self, store, status):
+        """The bad ticker fails, the next ticker is served, and Tiingo stays healthy."""
+        http = FakeHttpClient({"tiingo": [_err(status), _ok(b"[]")]})
+        reg = _registry(store, http)
+        with pytest.raises(ProviderUnavailable):
+            reg.fetch("prices", endpoint="tiingo/daily", params={"tickers": "BAD"})
+        assert reg.adapter_state("tiingo") == ADAPTER_HEALTHY
+
+        outcome = reg.fetch("prices", endpoint="tiingo/daily", params={"tickers": "AAPL"})
+        assert outcome.provider == "tiingo"
+        assert reg.adapter_state("tiingo") == ADAPTER_HEALTHY
+        assert http.calls == ["tiingo", "tiingo"]
+
+    def test_request_specific_error_falls_through_to_the_next_provider(self, store):
+        """Finnhub 404s the symbol, FMP serves it, and Finnhub stays usable."""
+        http = FakeHttpClient({"finnhub": [_err(404)], "fmp": [_ok(b'{"price":1.0}')]})
+        reg = _registry(store, http)
+        outcome = reg.fetch("prices", endpoint="quote", params={"symbol": "AAPL"})
+        assert outcome.provider == "fmp"
+        assert reg.adapter_state("finnhub") == ADAPTER_HEALTHY
+
+    def test_forbidden_still_exhausts_the_provider(self, store):
+        """A 403 is a plan or credential fault: the next fetch makes no HTTP call."""
+        http = FakeHttpClient({"tiingo": [_err(403)]})
+        reg = _registry(store, http)
+        with pytest.raises(ProviderUnavailable):
+            reg.fetch("prices", endpoint="tiingo/daily", params={"tickers": "AAPL"})
+        assert reg.adapter_state("tiingo") == ADAPTER_EXHAUSTED
+
+        with pytest.raises(ProviderUnavailable):
+            reg.fetch("prices", endpoint="tiingo/daily", params={"tickers": "MSFT"})
+        assert http.calls == ["tiingo"]
+
+    def test_unauthorized_still_exhausts_the_provider(self, store):
+        """A 401 marks the provider exhausted."""
+        http = FakeHttpClient({"tiingo": [_err(401)]})
+        reg = _registry(store, http)
+        with pytest.raises(ProviderUnavailable):
+            reg.fetch("prices", endpoint="tiingo/daily", params={"tickers": "AAPL"})
+        assert reg.adapter_state("tiingo") == ADAPTER_EXHAUSTED
+
+
 class TestFallbackIsScopedToDataType:
     """Test fallback is scoped to data type."""
     def test_macro_falls_back_nowhere(self, store):

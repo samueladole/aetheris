@@ -181,6 +181,22 @@ def test_one_failed_series_is_recorded_and_the_rest_continue(tmp_path):
     json.dumps(m)
 
 
+def test_ingest_continues_past_an_unknown_ticker(tmp_path):
+    """A ticker the price provider 404s is a failure; every other ticker is fetched."""
+    bad = WL.assets[0].ticker
+    missing = ProviderUnavailable("tiingo", "tiingo/daily", 404, "request rejected")
+    registry, _ = _registry(
+        tmp_path, _routes({f"api.tiingo.com/tiingo/daily/{bad}/": missing})
+    )
+
+    m = run_ingest(registry, WL, now=NOW)
+
+    assert [(f["kind"], f["key"]) for f in m["failures"]] == [("prices", bad)]
+    others = {a.ticker for a in WL.assets[1:]}
+    assert others <= {key for kind, key in _keys(m) if kind == "prices"}
+    assert ("prices", bad) not in _keys(m)
+
+
 def test_failure_messages_mask_credentials(tmp_path):
     """A transport error quoting the request URL must not checkpoint the key."""
     leak = ProviderUnavailable(
