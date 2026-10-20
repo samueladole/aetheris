@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import math
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -34,32 +33,12 @@ from src.orchestration.steps import (
 )
 from src.orchestration.wiring import build_ingestion_registry
 from src.sentiment.entities import WatchTerms, resolve_entities
-from tests.integration.fakes import RoutedHttpClient, UnroutedRequest
+from tests.integration.fakes import PROFILE, RoutedHttpClient, UnroutedRequest, fixture_routes
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "providers"
 NOW = datetime(2026, 10, 20, tzinfo=UTC)
 WL = DEFAULT_WATCHLIST
 AAPL = "equity:NASDAQ:AAPL"
 MSFT = "equity:NASDAQ:MSFT"
-PROFILE = "finnhub.io/api/v1/stock/profile2"
-
-
-def _fixture(name: str) -> bytes:
-    return (FIXTURES / name).read_bytes()
-
-
-def _routes(overrides: dict[str, bytes | Exception] | None = None) -> dict:
-    """Fixture routes: CPI for every series, AAPL prices and profile, general news."""
-    routes: dict[str, bytes | Exception] = {
-        "api.stlouisfed.org": _fixture("fred_cpiaucsl.json"),
-        "api.tiingo.com/tiingo/daily": b"[]",
-        "api.tiingo.com/tiingo/daily/AAPL/": _fixture("tiingo_aapl_prices.json"),
-        PROFILE: b"{}",
-        f"{PROFILE}|symbol=AAPL": _fixture("finnhub_profile_aapl.json"),
-        "finnhub.io|category=general": _fixture("finnhub_news_general.json"),
-    }
-    routes.update(overrides or {})
-    return routes
 
 
 class _Unlimited:
@@ -88,7 +67,7 @@ def _settings(tmp_path) -> Settings:
 
 
 def _registry(tmp_path, routes: dict | None = None):
-    http = RoutedHttpClient(routes if routes is not None else _routes())
+    http = RoutedHttpClient(routes if routes is not None else fixture_routes())
     registry = build_ingestion_registry(_settings(tmp_path), http=http)
     registry.rate_limiter = _Unlimited()
     return registry, http
@@ -170,7 +149,7 @@ def test_ingest_manifest_covers_the_watchlist(tmp_path):
 def test_one_failed_series_is_recorded_and_the_rest_continue(tmp_path):
     """A provider failure on one series is a recorded failure, not a crash."""
     down = ProviderUnavailable("fred", "series/observations", 503, "server error")
-    registry, _ = _registry(tmp_path, _routes({"api.stlouisfed.org|series_id=UNRATE": down}))
+    registry, _ = _registry(tmp_path, fixture_routes({"api.stlouisfed.org|series_id=UNRATE": down}))
 
     m = run_ingest(registry, WL, now=NOW)
 
@@ -186,7 +165,7 @@ def test_ingest_continues_past_an_unknown_ticker(tmp_path):
     bad = WL.assets[0].ticker
     missing = ProviderUnavailable("tiingo", "tiingo/daily", 404, "request rejected")
     registry, _ = _registry(
-        tmp_path, _routes({f"api.tiingo.com/tiingo/daily/{bad}/": missing})
+        tmp_path, fixture_routes({f"api.tiingo.com/tiingo/daily/{bad}/": missing})
     )
 
     m = run_ingest(registry, WL, now=NOW)
@@ -202,7 +181,7 @@ def test_failure_messages_mask_credentials(tmp_path):
     leak = ProviderUnavailable(
         "?", "", None, "Max retries exceeded with url: /fred?series_id=GDP&api_key=s3cret"
     )
-    registry, _ = _registry(tmp_path, _routes({"api.stlouisfed.org|series_id=GDP": leak}))
+    registry, _ = _registry(tmp_path, fixture_routes({"api.stlouisfed.org|series_id=GDP": leak}))
 
     m = run_ingest(registry, WL, now=NOW)
 
@@ -212,7 +191,7 @@ def test_failure_messages_mask_credentials(tmp_path):
 
 def test_an_unrouted_request_propagates(tmp_path):
     """A missing canned response fails the test run instead of becoming a failure entry."""
-    routes = _routes()
+    routes = fixture_routes()
     del routes["finnhub.io|category=general"]
     registry, _ = _registry(tmp_path, routes)
 
@@ -223,7 +202,8 @@ def test_an_unrouted_request_propagates(tmp_path):
 @pytest.mark.parametrize("error", [RegistryError("no adapter registered"), TypeError("a bug")])
 def test_a_non_provider_error_propagates(tmp_path, error):
     """Only an unavailable provider is a recorded failure; anything else is a defect."""
-    registry, _ = _registry(tmp_path, _routes({"api.stlouisfed.org|series_id=UNRATE": error}))
+    routes = fixture_routes({"api.stlouisfed.org|series_id=UNRATE": error})
+    registry, _ = _registry(tmp_path, routes)
 
     with pytest.raises(type(error)):
         run_ingest(registry, WL, now=NOW)
@@ -255,7 +235,7 @@ def test_manifest_from_store_matches_ingest(tmp_path):
 def test_manifest_from_store_reports_what_is_missing(tmp_path):
     """A watched series with no stored payload is listed as a failure."""
     down = ProviderUnavailable("fred", "series/observations", 503, "server error")
-    store, m = _ingest(tmp_path, _routes({"api.stlouisfed.org|series_id=GDP": down}))
+    store, m = _ingest(tmp_path, fixture_routes({"api.stlouisfed.org|series_id=GDP": down}))
 
     rebuilt = manifest_from_store(store, WL, at=NOW)
 
@@ -304,7 +284,7 @@ def test_sentiment_payloads_trace_to_the_raw_payload(tmp_path):
 def test_blank_profile_name_does_not_match_unrelated_articles(tmp_path, blank):
     """An empty Finnhub profile name must not link every article to its asset."""
     profile = json.dumps({"name": blank, "currency": "USD"}).encode()
-    store, m = _ingest(tmp_path, _routes({f"{PROFILE}|symbol=MSFT": profile}))
+    store, m = _ingest(tmp_path, fixture_routes({f"{PROFILE}|symbol=MSFT": profile}))
 
     s = run_sentiment(store, m, WL)
 
@@ -441,7 +421,7 @@ def _fred_monthly(first: date, count: int) -> bytes:
 def test_graph_integration_derives_correlation_and_influence_edges(tmp_path, db):
     """Long enough series yield CORRELATES_WITH and INFLUENCES edges."""
     days = _trading_days(date(2026, 1, 2), date(2026, 10, 16))
-    routes = _routes(
+    routes = fixture_routes(
         {
             "api.tiingo.com/tiingo/daily/AAPL/": _tiingo(days, 100.0, 0.0, 0.001),
             "api.tiingo.com/tiingo/daily/MSFT/": _tiingo(days, 200.0, 0.3, 0.0005),

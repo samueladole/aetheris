@@ -7,15 +7,20 @@ with the most parameter constraints wins, then the longest URL substring, so a
 specific route can override a catch-all for the same host.
 
 A request no route matches raises :class:`UnroutedRequest` instead of reaching
-the network.
+the network. :func:`fixture_routes` is the shared route table that serves the
+recorded provider fixtures for the default watchlist.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from urllib.parse import urlencode
 
 from src.ingestion.base import HttpResponse
+
+_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "providers"
+PROFILE = "finnhub.io/api/v1/stock/profile2"
 
 
 class UnroutedRequest(AssertionError):
@@ -70,4 +75,35 @@ class RoutedHttpClient:
         return HttpResponse(200, value, {})
 
 
-__all__ = ["RoutedHttpClient", "UnroutedRequest"]
+def _fixture(name: str) -> bytes:
+    """Return the bytes of one recorded provider fixture."""
+    return (_FIXTURES / name).read_bytes()
+
+
+def fixture_routes(
+    overrides: Mapping[str, bytes | Exception] | None = None,
+) -> dict[str, bytes | Exception]:
+    """Fixture routes: CPI for every series, AAPL prices and profile, general news.
+
+    Every other ticker gets an empty price history and an empty profile, so a
+    run over the default watchlist fetches everything and scores only AAPL.
+
+    Args:
+        overrides: Routes to add or replace.
+
+    Returns:
+        A route table for :class:`RoutedHttpClient`.
+    """
+    routes: dict[str, bytes | Exception] = {
+        "api.stlouisfed.org": _fixture("fred_cpiaucsl.json"),
+        "api.tiingo.com/tiingo/daily": b"[]",
+        "api.tiingo.com/tiingo/daily/AAPL/": _fixture("tiingo_aapl_prices.json"),
+        PROFILE: b"{}",
+        f"{PROFILE}|symbol=AAPL": _fixture("finnhub_profile_aapl.json"),
+        "finnhub.io|category=general": _fixture("finnhub_news_general.json"),
+    }
+    routes.update(overrides or {})
+    return routes
+
+
+__all__ = ["PROFILE", "RoutedHttpClient", "UnroutedRequest", "fixture_routes"]

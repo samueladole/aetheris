@@ -14,12 +14,11 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from src.orchestration.checkpoints import (
     first_incomplete_step,
     list_steps,
 )
+from tests.integration.fakes import RoutedHttpClient, fixture_routes
 
 
 def _fresh_settings(tmp_path, **overrides):
@@ -28,32 +27,12 @@ def _fresh_settings(tmp_path, **overrides):
     from src.config.settings import Settings
 
     base = Settings(
+        db_path=str(tmp_path / "graph.duckdb"),
         raw_db_path=str(tmp_path / "raw.db"),
         activity_timeout_s=60.0,
         retry_max_attempts=5,
     )
     return dataclasses.replace(base, **overrides)
-
-
-@pytest.fixture()
-def dbos_env(tmp_path, monkeypatch):
-    """Configure DBOS against a throwaway SQLite system database."""
-    import contextlib
-
-    import dbos
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    db_file = tmp_path / "system.dbos.sqlite"
-    config = {
-        "name": "aetheris_test",
-        "system_database_url": f"sqlite:///{db_file}",
-        "log_level": "WARN",
-    }
-    dbos.DBOS(config=config)
-    dbos.DBOS.launch()
-    yield dbos
-    with contextlib.suppress(Exception):  # teardown is best-effort
-        dbos.DBOS.destroy(destroy_registry=True)
 
 
 class TestCheckpointResume:
@@ -63,7 +42,8 @@ class TestCheckpointResume:
         from src.orchestration import workflows
 
         settings = _fresh_settings(tmp_path)
-        handle = workflows.start(settings)
+        # A live run fetches, so it is served canned responses, never the network.
+        handle = workflows.start(settings, http=RoutedHttpClient(fixture_routes()))
         assert handle.workflow_id
         assert handle.workflow_id != "?"
 
@@ -76,7 +56,7 @@ class TestCheckpointResume:
         from src.orchestration import workflows
 
         settings = _fresh_settings(tmp_path)
-        handle = workflows.start(settings)
+        handle = workflows.start(settings, http=RoutedHttpClient(fixture_routes()))
         idx = first_incomplete_step(handle.workflow_id)
         # Either the workflow completed (None) or failed partway (an int).
         assert idx is None or isinstance(idx, int)
