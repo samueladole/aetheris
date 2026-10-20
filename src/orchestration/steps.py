@@ -510,6 +510,7 @@ def run_evaluation(
     at: datetime,
     reference_days: int = 7,
     drift_threshold: float = 0.1,
+    entity_id: str | None = None,
 ) -> dict:
     """Evaluate the current scores and their drift from the graph's recent history.
 
@@ -524,6 +525,8 @@ def run_evaluation(
         at: End of the reference window (exclusive).
         reference_days: Length of the reference window in days.
         drift_threshold: Mean polarity shift that counts as drift.
+        entity_id: Evaluate one entity: the reference keeps only its scores and
+            the evaluation is labelled with it. ``None`` means every entity.
 
     Returns:
         ``{"evaluation": Evaluation.as_dict(), "mlflow": status}``.
@@ -531,12 +534,17 @@ def run_evaluation(
     at = _utc(at, "at")
     current_ids = {item["metric_id"] for item in current}
     history = sentiment_scores(db, start=at - timedelta(days=reference_days), end=at)
-    reference = [row["score"] for row in history if row["metric_id"] not in current_ids]
+    reference = [
+        row["score"]
+        for row in history
+        if row["metric_id"] not in current_ids
+        and (entity_id is None or row["entity_id"] == entity_id)
+    ]
     evaluation, status = compute_drift_report(
         [dict(item) for item in current],
         reference=reference or None,
         drift_threshold=drift_threshold,
-        entity_id=None,
+        entity_id=entity_id,
     )
     return {"evaluation": evaluation.as_dict(), "mlflow": status}
 

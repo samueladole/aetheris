@@ -507,3 +507,17 @@ def test_evaluation_without_history_reports_no_drift(tmp_path, db, monkeypatch):
 
     assert result["evaluation"]["items_scored"] == len(s["scored"])
     assert result["evaluation"]["drift_score"] is None
+
+
+def test_evaluation_for_one_entity_uses_only_its_history(tmp_path, db, monkeypatch):
+    """With ``entity_id`` the reference holds only that entity's earlier scores."""
+    monkeypatch.chdir(tmp_path)
+    _, _, s, repo, _ = _integrate(tmp_path, db)
+    _seed(repo, "msft-ref", -0.5, NOW - timedelta(days=2))  # _seed writes MSFT rows
+    current = [i["payload"] for i in s["scored"] if i["payload"]["entity_id"] == AAPL]
+
+    result = run_evaluation(db, current, at=NOW, entity_id=AAPL)
+
+    assert result["evaluation"]["entity_id"] == AAPL
+    assert result["evaluation"]["items_scored"] == len(current) > 0
+    assert result["evaluation"]["drift_score"] is None

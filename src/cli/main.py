@@ -11,11 +11,16 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Iterator, Sequence
+from contextlib import closing, contextmanager
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from src.cli import licenses
 from src.config.settings import ConfigError, Settings, get_settings
+
+if TYPE_CHECKING:
+    from src.ingestion.payloads import RawPayloadStore
 
 # Exit codes — part of the CLI contract (contracts/cli.md)
 EXIT_OK = 0
@@ -38,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_global_options(parser)
 
     parent = argparse.ArgumentParser(add_help=False)
-    _add_global_options(parent)
+    _add_global_options(parent, defaults=False)
 
     sub = parser.add_subparsers(dest="command", metavar="<command>")
 
@@ -210,24 +215,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_global_options(target: argparse.ArgumentParser) -> None:
-    """Attach the global CLI options (contracts/cli.md) to a parser."""
+def _add_global_options(target: argparse.ArgumentParser, *, defaults: bool = True) -> None:
+    """Attach the global CLI options (contracts/cli.md) to a parser.
+
+    Only the top-level parser sets defaults. A subparser writes its defaults
+    over the values parsed before the command, so with defaults on the
+    subparsers' copies, ``aetheris --json graph upsert`` would lose ``--json``.
+    """
+    unset = {} if defaults else {"default": argparse.SUPPRESS}
     target.add_argument(
         "--config",
         metavar="PATH",
         help="Settings file; defaults to $AETHERIS_CONFIG",
+        **unset,
     )
     target.add_argument(
-        "--db", metavar="PATH", help="DuckDB graph file (default ./aetheris.duckdb)"
+        "--db", metavar="PATH", help="DuckDB graph file (default ./aetheris.duckdb)", **unset
     )
     target.add_argument(
-        "--raw", metavar="PATH", help="SQLite raw payload file (default ./aetheris-raw.db)"
+        "--raw",
+        metavar="PATH",
+        help="SQLite raw payload file (default ./aetheris-raw.db)",
+        **unset,
     )
     target.add_argument(
-        "--json", action="store_true", help="Emit machine-readable JSON"
+        "--json", action="store_true", help="Emit machine-readable JSON", **unset
     )
     target.add_argument(
-        "--trace", action="store_true", help="Force OpenTelemetry span export"
+        "--trace", action="store_true", help="Force OpenTelemetry span export", **unset
     )
 
 
@@ -388,18 +403,86 @@ def _cmd_docs(args: argparse.Namespace, settings: Settings) -> int:
     return EXIT_OK
 
 
-def _cmd_score(args: argparse.Namespace, settings: Settings) -> int:
-    """`aetheris score` — turn ingested news text into sentiment payloads (T051)."""
-    from datetime import datetime
+def _now() -> datetime:
+    """The as-of time of a command that reads stored data; read once per command."""
+    return datetime.now(UTC)
 
-    from src.observability.telemetry import init_telemetry, span
-    from src.sentiment.analyzer import score_text
+
+@contextmanager
+def _raw_store(path: str) -> Iterator[RawPayloadStore | None]:
+    """Yield the raw payload store, or ``None`` when it is absent or empty.
+
+    A store that cannot be opened is a state, not a crash: either way there is
+    nothing stored to read.
+    """
+    from src.ingestion.payloads import RawPayloadStore
+
+    try:
+        store = RawPayloadStore(path)
+    except Exception:  # noqa: BLE001 - an absent store is a state, not a crash
+        yield None
+        return
+    try:
+        yield store if store.count() else None
+    finally:
+        store.close()
+
+
+def _select(
+    scored: list[dict],
+    *,
+    entity: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> list[dict]:
+    """The scored items for ``entity`` whose article was published in ``[since, until)``."""
+    selected = []
+    for item in scored:
+        payload = item["payload"]
+        published = datetime.fromisoformat(payload["timestamp"])
+        if entity and payload["entity_id"] != entity:
+            continue
+        if since and published < since:
+            continue
+        if until and published >= until:
+            continue
+        selected.append(item)
+    return selected
+
+
+def _score_stored(args: argparse.Namespace, settings: Settings) -> list[dict] | None:
+    """Score the stored news; ``None`` when the raw store holds nothing."""
+    from src.config.watchlist import load_watchlist
+    from src.observability.telemetry import span
+    from src.orchestration import steps
+
+    since = _parse_iso(args.since, "--since")
+    at = _now()
+    watchlist = load_watchlist(settings.config_path)
+    with _raw_store(settings.raw_db_path) as store:
+        if store is None:
+            return None
+        manifest = steps.manifest_from_store(store, watchlist, at=at)
+        with span(
+            "sentiment.score",
+            **{"aetheris.model": args.model, "aetheris.entity": args.entity or "all"},
+        ):
+            sentiment = steps.run_sentiment(
+                store, manifest, watchlist, model_id=args.model, temperature=args.temperature
+            )
+    selected = _select(sentiment["scored"], entity=args.entity, since=since)
+    return [item["payload"] for item in selected]
+
+
+def _cmd_score(args: argparse.Namespace, settings: Settings) -> int:
+    """`aetheris score` — score stored news, or literal ``--text``, into payloads (T051).
+
+    Without ``--text`` the newest stored news payloads are scored for the
+    watched assets, as the pipeline's sentiment step does; ``--entity`` and
+    ``--since`` filter the result.
+    """
+    from src.observability.telemetry import init_telemetry
     from src.sentiment.models import ModelManifestError
-    from src.sentiment.schema import (
-        Calibration,
-        Provenance,
-        build_payload,
-    )
 
     init_telemetry(settings)
 
@@ -418,24 +501,51 @@ def _cmd_score(args: argparse.Namespace, settings: Settings) -> int:
         print("error: --temperature must be positive", file=sys.stderr)
         return EXIT_USAGE
 
-    if not args.text:
-        print(
-            "error: no text to score. Pass --text '...' (repeatable), or run "
-            "`aetheris ingest` first so there are payloads to read.",
-            file=sys.stderr,
-        )
-        return EXIT_USAGE
+    if args.text:
+        payloads = _score_texts(args)
+        if payloads is None:
+            return EXIT_USAGE
+    else:
+        payloads = _score_stored(args, settings)
+        if payloads is None:
+            print(
+                "error: no stored news to score. Run `aetheris ingest` first, or "
+                "pass --text '...' (repeatable).",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+
+    if args.json:
+        import json
+
+        print(json.dumps(payloads, indent=2))
+    elif not payloads:
+        print("(no results)")
+    else:
+        for payload in payloads:
+            print(
+                f"{payload['entity_id']} score={payload['polarity_score']:+.4f} "
+                f"confidence={payload['confidence']:.4f} "
+                f"model={payload['model']['id']}"
+            )
+    return EXIT_OK
+
+
+def _score_texts(args: argparse.Namespace) -> list[dict] | None:
+    """Score each literal ``--text``; ``None`` after reporting a bad ``--since``."""
+    from src.observability.telemetry import span
+    from src.sentiment.analyzer import score_text
+    from src.sentiment.schema import Calibration, Provenance, build_payload
 
     entity = args.entity or "equity:UNKNOWN:UNLISTED"
     if args.since:
-        # Literal --text carries no timestamps, so --since cannot filter it.
-        # It is accepted here for contract compatibility with the future
-        # payload-reading path (task T065).
+        # Literal text carries no timestamp, so --since cannot filter it; it is
+        # still validated, so a typo is not silently accepted.
         try:
             datetime.fromisoformat(args.since)
         except ValueError as exc:
             print(f"error: --since is not ISO-8601: {exc}", file=sys.stderr)
-            return EXIT_USAGE
+            return None
 
     payloads = []
     with span(
@@ -468,19 +578,7 @@ def _cmd_score(args: argparse.Namespace, settings: Settings) -> int:
                 ),
             )
             payloads.append(payload)
-
-    if args.json:
-        import json
-
-        print(json.dumps(payloads, indent=2))
-    else:
-        for payload in payloads:
-            print(
-                f"{payload['entity_id']} score={payload['polarity_score']:+.4f} "
-                f"confidence={payload['confidence']:.4f} "
-                f"model={payload['model']['id']}"
-            )
-    return EXIT_OK
+    return payloads
 
 
 def _hash(text: str) -> str:
@@ -629,13 +727,17 @@ def _run_query(args, db, sentiment_for, edges_from, get_entity,
 
 
 def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
-    """`aetheris evaluate` — score summaries, drift, and MLflow logging (T073)."""
-    from src.observability.evaluate import (
-        compute_drift_report,
-        summarise_scored,
-    )
+    """`aetheris evaluate` — evaluate the graph's recent sentiment and its drift (T073).
+
+    The evaluated items are the SentimentMetric rows published in the last 24
+    hours, or since ``--since``. Drift is measured against the scores of the
+    previous 7 days; with ``--entity``, that entity's scores only.
+    """
+    from src.graph.queries import sentiment_scores
+    from src.graph.schema import GraphDatabase
+    from src.observability.evaluate import summarise_scored
     from src.observability.telemetry import init_telemetry, span
-    from src.sentiment.analyzer import score_text
+    from src.orchestration import steps
 
     init_telemetry(settings)
 
@@ -646,48 +748,48 @@ def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
         print("error: --drift-threshold must be positive", file=sys.stderr)
         return EXIT_USAGE
 
-    # Score a small deterministic sample so the evaluation is runnable without
-    # ingested payloads; the real pipeline feeds this from `aetheris score`.
-    samples = [
-        "company beats expectations as revenue surges to a record",
-        "stock plunges after earnings miss and downgrade",
-        "the company reported nothing unusual this quarter",
-    ]
-    payloads = []
-    for text in samples:
-        polarity, _probs, _spec = score_text(text, model_id="stub")
-        payloads.append(
+    at = _now()
+    start = _parse_iso(args.since, "--since") or at - timedelta(hours=24)
+    if start >= at:
+        raise ConfigError(f"--since {start.isoformat()} is not before now ({at.isoformat()})")
+
+    with closing(GraphDatabase(settings.db_path)) as db:
+        current = [
             {
-                "polarity_score": float(polarity),
-                "confidence": polarity.confidence,
-                "entity_id": args.entity or "sample",
+                "metric_id": row["metric_id"],
+                "entity_id": row["entity_id"],
+                "polarity_score": row["score"],
+                "confidence": row["confidence"],
             }
-        )
+            for row in sentiment_scores(db, start=start, end=at)
+            if (not args.entity or row["entity_id"] == args.entity)
+            and row["confidence"] >= args.min_confidence
+        ]
+        with span("evaluate.run", entity=args.entity or "all"):
+            report = steps.run_evaluation(
+                db,
+                current,
+                at=at,
+                drift_threshold=args.drift_threshold,
+                entity_id=args.entity,
+            )
 
-    if args.min_confidence:
-        payloads = [p for p in payloads if p["confidence"] >= args.min_confidence]
-
-    with span("evaluate.run", entity=args.entity or "sample"):
-        result, status = compute_drift_report(
-            payloads, entity_id=args.entity, drift_threshold=args.drift_threshold
-        )
-
-    summary = summarise_scored(payloads)
+    result, status = report["evaluation"], report["mlflow"]
     if args.json:
         import json
 
         print(json.dumps(
-            {"evaluation": result.as_dict(), "mlflow": status,
-             "summary": summary},
+            {"evaluation": result, "mlflow": status,
+             "summary": summarise_scored(current)},
             indent=2, default=str,
         ))
     else:
-        print(f"evaluated {result.items_scored} item(s)")
-        print(f"  mean polarity:     {result.mean_polarity:+.4f}")
-        print(f"  mean confidence:   {result.mean_confidence:.4f}")
-        if result.drift_score is not None:
-            print(f"  drift score:       {result.drift_score:.4f}")
-            print(f"  drift detected:    {result.drift_detected}")
+        print(f"evaluated {result['items_scored']} item(s)")
+        print(f"  mean polarity:     {result['mean_polarity']:+.4f}")
+        print(f"  mean confidence:   {result['mean_confidence']:.4f}")
+        if result["drift_score"] is not None:
+            print(f"  drift score:       {result['drift_score']:.4f}")
+            print(f"  drift detected:    {result['drift_detected']}")
         print(f"  mlflow logged:     {status['logged']}")
         if not status["logged"]:
             print(f"    reason: {status['reason']}")
@@ -695,32 +797,34 @@ def _cmd_evaluate(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_graph_upsert(args: argparse.Namespace, settings: Settings) -> int:
-    """Align and upsert a window into the graph (T064).
+    """Score the stored news, then align and upsert it into the graph (T064).
 
-    The pipeline's step 4. It requires already-ingested raw payloads and
-    already-scored sentiment, so with neither available the command reports that
-    honestly rather than writing an empty graph and calling it success.
+    The pipeline's sentiment and graph steps, run on the newest stored payload
+    for each watched item. ``--since``/``--until`` keep the sentiment metrics of
+    articles published in that window. Derived edges are recomputed as of now
+    on every run and upserted by primary key, which is what ``--rebuild-edges``
+    asks for. With no stored payloads nothing is written, and the command says so.
     """
-    from src.observability.metrics import get_metrics
+    from src.config.watchlist import load_watchlist
+    from src.graph.repository import GraphRepository
+    from src.graph.schema import GraphDatabase
     from src.observability.telemetry import init_telemetry, span
+    from src.orchestration import steps
 
     init_telemetry(settings)
 
     since = _parse_iso(args.since, "--since")
     until = _parse_iso(args.until, "--until")
+    if since and until and since >= until:
+        raise ConfigError(f"--since {since.isoformat()} is not before --until {until.isoformat()}")
+    at = _now()
+    watchlist = load_watchlist(settings.config_path)
 
-
-    with span("graph.upsert", **{"aetheris.rebuild": bool(args.rebuild_edges)}):
-        # Raw payload storage lives behind the ingestion layer; importing it
-        # lazily keeps `aetheris graph query` usable without a DB.
-        try:
-            from src.ingestion.payloads import RawPayloadStore
-
-            store = RawPayloadStore(settings.raw_db_path)
-        except Exception:  # noqa: BLE001 - an absent store is a state, not a crash
-            store = None
-
-        if store is None or store.count() == 0:
+    with (
+        span("graph.upsert", **{"aetheris.rebuild": bool(args.rebuild_edges)}),
+        _raw_store(settings.raw_db_path) as store,
+    ):
+        if store is None:
             print(
                 "nothing to upsert: no raw payloads. Run `aetheris ingest` first, "
                 "then `aetheris score`, then `aetheris graph upsert`.",
@@ -728,12 +832,23 @@ def _cmd_graph_upsert(args: argparse.Namespace, settings: Settings) -> int:
             )
             return EXIT_USAGE
 
-        get_metrics().graph_upserts.add(store.count())
+        manifest = steps.manifest_from_store(store, watchlist, at=at)
+        sentiment = steps.run_sentiment(store, manifest, watchlist)
+        sentiment["scored"] = _select(sentiment["scored"], since=since, until=until)
+        with closing(GraphDatabase(settings.db_path)) as db:
+            counts = steps.run_graph_integration(
+                store, GraphRepository(db), manifest, sentiment, watchlist, at=at
+            )
+
+    if args.json:
+        import json
+
+        print(json.dumps(counts, indent=2))
+    else:
+        edges = ", ".join(f"{rel}={n}" for rel, n in counts["edges"].items())
         print(
-            f"graph upsert: window "
-            f"[{since.isoformat() if since else 'beginning'}, "
-            f"{until.isoformat() if until else 'now'}] — "
-            f"{store.count()} raw payload(s) eligible"
+            f"graph upsert: {counts['assets']} asset(s), {counts['indicators']} "
+            f"indicator(s), {counts['metrics']} metric(s); edges: {edges}"
         )
     return EXIT_OK
 
@@ -870,13 +985,17 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
             return EXIT_USAGE
 
     try:
-        checkpoints.launch(settings)
         if args.resume:
-            handle = checkpoints.resume(args.resume)
+            # Register before launch: DBOS executes a rewound run by looking its
+            # function up by name, and launch recovers pending runs the same way.
+            workflows.register_workflow(settings)
+            checkpoints.launch(settings)
+            handle = workflows.resume_to_completion(args.resume)
             action = "resumed"
         else:
             import asyncio
 
+            checkpoints.launch(settings)
             handle = asyncio.run(workflows.start_async(settings, wait=True))
             action = "started"
     except Exception as exc:

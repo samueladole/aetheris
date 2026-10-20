@@ -45,7 +45,7 @@ from src.ingestion.base import HttpClient
 from src.ingestion.payloads import RawPayloadStore
 from src.observability.metrics import get_metrics
 from src.observability.telemetry import annotate, span
-from src.orchestration import steps
+from src.orchestration import checkpoints, steps
 from src.orchestration.checkpoints import WorkflowHandle
 from src.orchestration.compensation import (
     CompensationRegistry,
@@ -359,6 +359,48 @@ def start(
     return asyncio.run(start_async(settings, wait=wait, http=http, watchlist=watchlist))
 
 
+# DBOS statuses of a run that is executing or waiting to execute.
+_ACTIVE = frozenset({"PENDING", "ENQUEUED", "DELAYED"})
+
+
+def resume_to_completion(workflow_id: str) -> WorkflowHandle:
+    """Resume a pipeline run from its first failed step and wait for it to finish.
+
+    The pipeline must already be registered (:func:`register_workflow`): DBOS
+    executes a rewound run by looking its function up by name. In a fresh
+    process, register before ``DBOS.launch()``, which recovers pending runs.
+
+    Steps that already succeeded return their checkpointed outputs and are not
+    executed again. A run that succeeded is not rewound at all, and one that is
+    still executing, such as a run DBOS recovered at launch, is awaited. Call
+    outside an event loop; DBOS's synchronous API refuses to run inside one.
+
+    Args:
+        workflow_id: The run to resume.
+
+    Returns:
+        The run's terminal status and result, as :func:`start_async` reports it.
+
+    Raises:
+        WorkflowError: When the system database has no run with this id.
+    """
+    import dbos
+
+    status = checkpoints.workflow_status(workflow_id).status
+    if status == "UNKNOWN":
+        raise WorkflowError(f"no pipeline run {workflow_id!r} to resume")
+    if status != "SUCCESS" and status not in _ACTIVE:
+        checkpoints.resume(workflow_id)
+
+    try:
+        result = dbos.DBOS.get_result(workflow_id)
+        outcome = "SUCCESS"
+    except Exception as exc:
+        result = {"error": str(exc)}
+        outcome = "ERROR"
+    return WorkflowHandle(workflow_id=workflow_id, status=outcome, result=result)
+
+
 __all__ = [
     "PIPELINE_STEPS",
     "STEP_EVALUATION",
@@ -370,6 +412,7 @@ __all__ = [
     "WorkflowError",
     "build_registry",
     "register_workflow",
+    "resume_to_completion",
     "run_to_completion",
     "start",
     "start_async",
