@@ -41,6 +41,7 @@ from src.graph.schema import (
     RelationType,
     SentimentMetric,
 )
+from src.ingestion.base import ProviderUnavailable
 from src.ingestion.parsers import (
     AssetProfile,
     parse_finnhub_news,
@@ -134,7 +135,8 @@ def _requests(
 def run_ingest(registry: IngestionRegistry, watchlist: Watchlist, *, now: datetime) -> dict:
     """Fetch everything the watchlist needs and return the manifest.
 
-    A fetch that raises is recorded in ``failures`` and the rest continue.
+    A fetch whose provider is unavailable is recorded in ``failures`` and the
+    rest continue. Any other exception is a defect and propagates.
 
     Args:
         registry: A registry with adapters registered for every provider.
@@ -157,7 +159,7 @@ def run_ingest(registry: IngestionRegistry, watchlist: Watchlist, *, now: dateti
             outcome = registry.fetch(
                 data_type, endpoint=endpoint, params=params, ttl_seconds=ttl
             )
-        except Exception as exc:  # noqa: BLE001 - one failed fetch must not stop the rest
+        except ProviderUnavailable as exc:
             failures.append({"kind": kind, "key": key, "error": _redact(str(exc))})
             continue
         entries.append({"kind": kind, "key": key, "payload_id": outcome.payload.payload_id})

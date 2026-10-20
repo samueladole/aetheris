@@ -22,6 +22,7 @@ from src.graph.repository import GraphRepository
 from src.graph.schema import GraphDatabase, NodeType, SentimentMetric
 from src.ingestion.base import ProviderUnavailable
 from src.ingestion.parsers import AssetProfile, parse_fred_observations
+from src.ingestion.registry import RegistryError
 from src.orchestration.steps import (
     IngestError,
     build_watch_terms,
@@ -33,7 +34,7 @@ from src.orchestration.steps import (
 )
 from src.orchestration.wiring import build_ingestion_registry
 from src.sentiment.entities import WatchTerms, resolve_entities
-from tests.integration.fakes import RoutedHttpClient
+from tests.integration.fakes import RoutedHttpClient, UnroutedRequest
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "providers"
 NOW = datetime(2026, 10, 20, tzinfo=UTC)
@@ -191,6 +192,25 @@ def test_failure_messages_mask_credentials(tmp_path):
 
     assert "s3cret" not in json.dumps(m)
     assert "api_key=***" in m["failures"][0]["error"]
+
+
+def test_an_unrouted_request_propagates(tmp_path):
+    """A missing canned response fails the test run instead of becoming a failure entry."""
+    routes = _routes()
+    del routes["finnhub.io|category=general"]
+    registry, _ = _registry(tmp_path, routes)
+
+    with pytest.raises(UnroutedRequest):
+        run_ingest(registry, WL, now=NOW)
+
+
+@pytest.mark.parametrize("error", [RegistryError("no adapter registered"), TypeError("a bug")])
+def test_a_non_provider_error_propagates(tmp_path, error):
+    """Only an unavailable provider is a recorded failure; anything else is a defect."""
+    registry, _ = _registry(tmp_path, _routes({"api.stlouisfed.org|series_id=UNRATE": error}))
+
+    with pytest.raises(type(error)):
+        run_ingest(registry, WL, now=NOW)
 
 
 def test_every_fetch_failing_raises(tmp_path):
