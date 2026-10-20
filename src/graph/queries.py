@@ -34,11 +34,23 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _utc_value(value: Any) -> Any:
+    """Return datetimes as aware UTC; leave every other value untouched."""
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+    return value
+
+
 def _rows(db: GraphDatabase, sql: str, params: list[Any]) -> list[dict[str, Any]]:
     """Execute and return rows as dicts, so column order is never a contract."""
     result = db.execute(sql, params)
     names = [d[0] for d in result.description]
-    return [dict(zip(names, row, strict=True)) for row in result.fetchall()]
+    return [
+        {name: _utc_value(value) for name, value in zip(names, row, strict=True)}
+        for row in result.fetchall()
+    ]
 
 
 def sentiment_series(
