@@ -74,6 +74,49 @@ scoring path works end to end, not the model's sentiment quality.
 `real 7.77`). This is **one sample, not a P95**; it shows a single scheduled run
 finished far inside the target but does not establish the percentile.
 
+## Second live pipeline run
+
+**Run**: 2026-11-04, after the FRED vintage-window fix, with its own data files
+in `.superpowers/sdd/plan/live2/` (`graph.duckdb`, `raw.db`):
+
+```bash
+cd .superpowers/sdd/plan && mkdir -p live2 && \
+AETHERIS_ENV_FILE=/Users/samuel/Documents/GitHub/aetheris/.env /usr/bin/time -p \
+/Users/samuel/Documents/GitHub/aetheris/.venv/bin/aetheris --db live2/graph.duckdb \
+--raw live2/raw.db --json run --trigger schedule
+```
+
+It made 22 requests: 5 FRED, 8 Tiingo, 8 Finnhub profiles, and 1 Finnhub news.
+
+| Step | State |
+|---|---|
+| trigger | SUCCEEDED |
+| ingest | SUCCEEDED |
+| sentiment | SUCCEEDED |
+| graph_integration | SUCCEEDED |
+| evaluation | SUCCEEDED |
+
+Workflow status `SUCCESS`. Summary: **22 payloads fetched, 5 news items scored,
+65 edges** (28 CORRELATES_WITH, 32 INFLUENCES, 5 TARGETS), and **no failures**
+(`"failures": []`). The graph held 8 assets, 5 indicators, and 575 macro
+observations across all five series: DGS10 498, CPIAUCSL 23, FEDFUNDS 24,
+UNRATE 22, GDP 8. No credential appeared in the output.
+
+**DGS10 is fetched.** Every FRED request asked for first releases from
+`realtime_start=2024-11-04`, 730 days before the run, and FRED echoed that
+window. DGS10 returned 522 rows: 23 missing values (`.`) and 499 values.
+
+**Clipping guard**: one DGS10 row had `realtime_start` equal to the requested
+`2024-11-04` (the 2024-11-01 value, 4.37), so its first-release date is unknown
+and it was dropped; the other 498 values were written. No row of the other
+four series started on the window start.
+
+**Scores** came from the stub scorer (`model_id` `stub@0` on every metric), as
+in the first run.
+
+**Duration against SC-001** (P95 < 5 minutes): 7.2 s wall-clock (`time -p`
+`real 7.18`). One sample again, not a P95.
+
 ## Not verifiable from a checkout
 
 These require a push to `main` and watching the real GitHub Actions run:
