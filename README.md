@@ -279,6 +279,10 @@ To change them, add a `[watchlist]` table to the TOML config file (`--config`
 or `AETHERIS_CONFIG`). Omitted keys keep their defaults, and a malformed entry
 is refused with a `ConfigError`.
 
+The defaults are sized for a small watchlist. For the limits at the plan's
+assumed scale of about 500 assets (edge derivation grows with the square of the
+asset count), see [`docs/scale.md`](docs/scale.md).
+
 FRED first releases are requested from `max(influence_window_days,
 price_history_days)` days before the run. FRED caps how many vintage dates one
 request may span: the default 730 days fits DGS10 (daily), but a much longer
@@ -657,6 +661,36 @@ count does not hide them.
   availability times from `close_available_at` and `release_available_at`. The
   `align()` helper in `src/graph/align.py` (T060) is tested but is not called by
   the pipeline.
+- **The pipeline scores with the stub model.** `aetheris run` and
+  `aetheris graph upsert` call `run_sentiment` with its default
+  `model_id="stub"`: the deterministic lexical scorer used in tests, not
+  FinSense-ModernBERT or another checkpoint in `src/sentiment/models.py`. Their
+  scores exercise the pipeline but are not model-quality sentiment.
+  `aetheris score --model MODEL_ID` already runs a permitted model; the
+  pipeline needs a setting passed through to `run_sentiment`'s `model_id`, and
+  the ML extras installed, to do the same.
+- **Quotas are counted per process, not per calendar day.** The rate limiter
+  (`src/ingestion/ratelimit.py`) keeps its token buckets in memory, so every
+  new `aetheris` process starts with full daily and hourly budgets. Several
+  runs in one day can exceed a provider's daily quota.
+- **A failed fetch is not retried within the run.** `run_ingest` passes no
+  retry policy to the registry, so a transient error drops that series, ticker,
+  or feed for the run. The run still succeeds and lists the fetch under
+  `failures`.
+- **News comes only from Finnhub's `general` category.** Tiingo and FMP news
+  and per-company Finnhub news are not fetched; an article reaches a watched
+  asset only by naming it.
+- **`aetheris ingest <provider>` may be served by another provider.** The
+  provider must declare the endpoint, but the registry serves it from the first
+  available provider in fallback order; the output names which one answered.
+- **`graph upsert --rebuild-edges` does nothing extra, and `--since/--until`
+  filter only the sentiment metrics.** Derived edges are recomputed as of now
+  on every upsert, so the flag changes nothing but a trace attribute; the
+  window does not limit macro observations or edges.
+- **Old graph files can hold local-time rows.** A graph written on a non-UTC
+  host before the graph database pinned DuckDB's time zone to UTC keeps the
+  timestamps it was written with. Rebuild such a file rather than mixing it
+  with new runs.
 - **The CLI query grammar differs from its contract.**
   [`cli.md`](.specify/specs/contracts/cli.md) specifies a top-level
   `aetheris query` with `assets --limit N`; the CLI has `aetheris graph query`

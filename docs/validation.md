@@ -59,6 +59,17 @@ a daily series, but the cause was not confirmed. The workflow still reported
 than failing the run, and the CLI summary does not list it. No credential
 appeared in the output.
 
+**Cause, confirmed 2026-11-04**: FRED caps how many vintage dates one request
+may span. DGS10 over the full real-time range spans 5,132 vintage dates and is
+refused ("exceeds the maximum number of vintage dates allowed"); with
+`realtime_start` 730 days back it returns 200 with 499 first-release rows. The
+pipeline now windows every macro request and reports failed fetches in the run
+summary and the CLI output (see the second run below).
+
+**Scores**: the 3 scored items came from the deterministic stub scorer, which
+the pipeline uses by default, not from FinSense-ModernBERT. They show the
+scoring path works end to end, not the model's sentiment quality.
+
 **Duration against SC-001** (P95 < 5 minutes): 7.8 s wall-clock (`time -p`
 `real 7.77`). This is **one sample, not a P95**; it shows a single scheduled run
 finished far inside the target but does not establish the percentile.
