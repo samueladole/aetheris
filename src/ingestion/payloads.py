@@ -65,6 +65,16 @@ class RawPayload:
         return age >= self.ttl_seconds
 
 
+@dataclass(frozen=True)
+class PayloadInfo:
+    """A stored payload's identity and request, without its body."""
+
+    payload_id: str
+    request_hash: str
+    fetched_at: datetime
+    request_params: dict[str, str] | None
+
+
 def build_payload_id(provider: str, endpoint: str, request_hash: str, fetched_at: datetime) -> str:
     """Construct the canonical payload identity (data-model.md §4)."""
     ts = fetched_at.astimezone(UTC).isoformat()
@@ -178,11 +188,17 @@ class RawPayloadStore:
             ).fetchone()
         return self._to_model(row) if row else None
 
-    def latest_by_endpoint(self, provider: str, endpoint: str) -> list[RawPayload]:
-        """Newest payload per ``request_hash``, ordered by ``fetched_at`` descending."""
+    def latest_by_endpoint(self, provider: str, endpoint: str) -> list[PayloadInfo]:
+        """Newest payload per ``request_hash``, ordered by ``fetched_at`` descending.
+
+        Only metadata is read: request hashes that embed a date (price and FRED
+        windows) make this list grow with every run, so bodies are left in the
+        store and fetched with :meth:`get` for the payloads actually chosen.
+        """
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM raw_payload AS r "
+                "SELECT payload_id, request_hash, fetched_at, request_params "
+                "FROM raw_payload AS r "
                 "WHERE provider = ? AND endpoint = ? AND fetched_at = ("
                 " SELECT MAX(fetched_at) FROM raw_payload "
                 " WHERE provider = r.provider AND endpoint = r.endpoint "
@@ -190,7 +206,17 @@ class RawPayloadStore:
                 "ORDER BY fetched_at DESC",
                 (provider, endpoint),
             ).fetchall()
-        return [self._to_model(row) for row in rows]
+        return [
+            PayloadInfo(
+                payload_id=row["payload_id"],
+                request_hash=row["request_hash"],
+                fetched_at=datetime.fromisoformat(row["fetched_at"]),
+                request_params=(
+                    json.loads(row["request_params"]) if row["request_params"] else None
+                ),
+            )
+            for row in rows
+        ]
 
     def count(self, provider: str | None = None) -> int:
         """Handle the count."""

@@ -302,7 +302,7 @@ names = ["Apple"]                 # news text matching these names is scored for
 series_id = "CPIAUCSL"
 name = "Consumer Price Index for All Urban Consumers"
 unit = "index"
-frequency = "monthly"
+frequency = "monthly"               # daily, weekly, monthly, quarterly, or annual
 seasonal_adjustment = "SA"
 release_time = "08:30"            # HH:MM New York time; omit when unknown
 ```
@@ -624,7 +624,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **582 tests** · **35 API reference pages**
+**5 import contracts kept** · **584 tests** · **35 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

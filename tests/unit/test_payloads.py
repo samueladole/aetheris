@@ -215,6 +215,30 @@ def test_latest_by_endpoint_returns_newest_per_request(tmp_path):
     store.close()
 
 
+def test_latest_by_endpoint_reads_no_body(tmp_path):
+    """Choosing payloads reads metadata only; bodies are fetched by id later."""
+    from datetime import datetime
+
+    store = RawPayloadStore(str(tmp_path / "raw.db"))
+    stored, _ = store.store(
+        provider="fred",
+        endpoint="e",
+        request_hash="a",
+        body=b"x" * 1024,
+        fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+        request_params={"series_id": "GDP"},
+    )
+    statements: list[str] = []
+    store._connect().set_trace_callback(statements.append)
+
+    (info,) = store.latest_by_endpoint("fred", "e")
+
+    assert not hasattr(info, "body")
+    assert (info.payload_id, info.request_params) == (stored.payload_id, {"series_id": "GDP"})
+    assert statements and not any("*" in sql or "body" in sql for sql in statements)
+    store.close()
+
+
 def test_registry_never_persists_credentials(tmp_path):
     """The stored params are the caller's, never the adapter-merged credentials."""
     from src.ingestion.base import HttpResponse

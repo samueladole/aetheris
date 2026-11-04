@@ -258,6 +258,26 @@ def test_manifest_from_store_matches_ingest(tmp_path):
     assert rebuilt["at"] == NOW.isoformat()
 
 
+def test_manifest_from_store_loads_no_payload_body(tmp_path, monkeypatch):
+    """Rebuilding the manifest reads metadata only, however much history is stored."""
+    registry, _ = _registry(tmp_path)
+    run_ingest(registry, WL, now=NOW - timedelta(days=1))  # older hashes: prices, macro
+    m = run_ingest(registry, WL, now=NOW)
+    store = registry.payload_store
+    loaded: list[str] = []
+    real_get = store.get
+    monkeypatch.setattr(store, "get", lambda pid: loaded.append(pid) or real_get(pid))
+    statements: list[str] = []
+    store._connect().set_trace_callback(statements.append)
+
+    rebuilt = manifest_from_store(store, WL, at=NOW)
+
+    assert rebuilt["entries"] == m["entries"]
+    assert loaded == []
+    reads = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert reads and not any("*" in sql or "body" in sql for sql in reads)
+
+
 def test_manifest_from_store_reports_what_is_missing(tmp_path):
     """A watched series with no stored payload is listed as a failure."""
     down = ProviderUnavailable("fred", "series/observations", 503, "server error")

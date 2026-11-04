@@ -192,7 +192,8 @@ def manifest_from_store(store: RawPayloadStore, watchlist: Watchlist, *, at: dat
     """Rebuild the manifest from payloads already in the raw store.
 
     For each watched item the newest stored payload is used, matched on the
-    request parameters the fetch recorded. A watched item with no stored
+    request parameters the fetch recorded. Only payload metadata is read; the
+    later steps load the chosen bodies by id. A watched item with no stored
     payload is listed in ``failures``. Payloads are not filtered by ``at``,
     which only stamps the manifest.
 
