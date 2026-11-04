@@ -44,6 +44,8 @@ from src.graph.schema import (
 from src.ingestion.base import ProviderUnavailable
 from src.ingestion.parsers import (
     AssetProfile,
+    MacroPoint,
+    fred_window_start,
     parse_finnhub_news,
     parse_finnhub_profile,
     parse_fred_observations,
@@ -79,6 +81,13 @@ _SOURCES: dict[str, tuple[str, str, str]] = {
     PROFILE: ("fundamentals", "finnhub", "stock/profile2"),
     NEWS: ("news", "finnhub", "/news"),
 }
+
+
+
+def pipeline_providers() -> tuple[str, ...]:
+    """The providers the pipeline fetches from, sorted; a live run needs their keys."""
+    return tuple(sorted({provider for _type, provider, _endpoint in _SOURCES.values()}))
+
 
 # The request parameter that holds each kind's manifest key.
 _KEY_PARAMS: dict[str, str] = {
@@ -118,10 +127,17 @@ def _requests(
 
     The order is fixed (series, prices, profiles, news) so manifests compare
     equal whichever way they were built.
+
+    Macro fetches ask FRED for first releases from the start of the longest
+    derivation window only. Over the full history a daily series such as DGS10
+    exceeds FRED's vintage-date limit and the request is refused (HTTP 400).
     """
     start = (now - timedelta(days=watchlist.price_history_days)).date().isoformat()
+    window = max(watchlist.influence_window_days, watchlist.price_history_days)
+    macro_start = (now - timedelta(days=window)).date().isoformat()
     requests: list[tuple[str, str, dict[str, str], int | None]] = [
-        (MACRO, s.series_id, {"series_id": s.series_id}, None) for s in watchlist.macro
+        (MACRO, s.series_id, {"series_id": s.series_id, "realtime_start": macro_start}, None)
+        for s in watchlist.macro
     ]
     requests += [
         (PRICES, a.ticker, {"tickers": a.ticker, "startDate": start}, None)
@@ -141,7 +157,9 @@ def run_ingest(registry: IngestionRegistry, watchlist: Watchlist, *, now: dateti
     Args:
         registry: A registry with adapters registered for every provider.
         watchlist: The series and assets to fetch.
-        now: The run time; prices are requested from ``now - price_history_days``.
+        now: The run time; prices are requested from ``now - price_history_days``
+            and macro first releases from ``now`` minus the longer of the
+            influence and price-history windows.
 
     Returns:
         ``{"at": iso, "entries": [{"kind", "key", "payload_id"}],
@@ -210,11 +228,29 @@ def _entries(manifest: Mapping[str, Any], kind: str) -> list[dict[str, str]]:
     return [e for e in manifest["entries"] if e["kind"] == kind]
 
 
-def _body(store: RawPayloadStore, payload_id: str) -> bytes:
+def _payload(store: RawPayloadStore, payload_id: str) -> RawPayload:
     payload: RawPayload | None = store.get(payload_id)
     if payload is None:
         raise LookupError(f"raw payload {payload_id!r} is not in the store")
-    return payload.body
+    return payload
+
+
+def _body(store: RawPayloadStore, payload_id: str) -> bytes:
+    return _payload(store, payload_id).body
+
+
+def _fred_points(payload: RawPayload) -> list[MacroPoint]:
+    """First releases in the payload, without rows clipped to the window start.
+
+    The window start is the ``realtime_start`` the fetch requested, else the one
+    FRED echoed in the body (an ad-hoc ``aetheris ingest`` stores only the
+    caller's parameters, not the adapter's default).
+    """
+    requested = (payload.request_params or {}).get("realtime_start")
+    window_start = (
+        date.fromisoformat(requested) if requested else fred_window_start(payload.body)
+    )
+    return parse_fred_observations(payload.body, window_start=window_start)
 
 
 def _profiles(
@@ -355,7 +391,11 @@ def _price_observations(
 def _macro_observations(
     store: RawPayloadStore, manifest: Mapping[str, Any], watchlist: Watchlist
 ) -> dict[str, list[Observation]]:
-    """First-release values by indicator code, each available at its release time."""
+    """First-release values by indicator code, each available at its release time.
+
+    Rows FRED clipped to the requested window start are dropped (see
+    :func:`_fred_points`): their first-release date is unknown.
+    """
     series_by_id = {s.series_id: s for s in watchlist.macro}
     macro: dict[str, list[Observation]] = {}
     for entry in _entries(manifest, MACRO):
@@ -368,7 +408,7 @@ def _macro_observations(
                 observed_at=_midnight(point.observed_on),
                 available_at=release_available_at(point.released_on, series.release_time),
             )
-            for point in parse_fred_observations(_body(store, entry["payload_id"]))
+            for point in _fred_points(_payload(store, entry["payload_id"]))
         ]
     return macro
 
@@ -561,6 +601,7 @@ __all__ = [
     "IngestError",
     "build_watch_terms",
     "manifest_from_store",
+    "pipeline_providers",
     "run_evaluation",
     "run_graph_integration",
     "run_ingest",

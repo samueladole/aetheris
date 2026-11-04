@@ -121,13 +121,18 @@ def _summary(
     sentiment: Mapping[str, Any],
     graph: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """What the run fetched, scored, and linked; all zero for a dry run."""
+    """What the run fetched, scored, and linked, and what it failed to fetch.
+
+    A fetch that failed does not fail the run, so ``failures`` is how a partial
+    ingest shows up. All zero and empty for a dry run.
+    """
     if dry_run:
-        return {"fetched": 0, "scored": 0, "edges": {}}
+        return {"fetched": 0, "scored": 0, "edges": {}, "failures": []}
     return {
         "fetched": len(manifest["entries"]),
         "scored": len(sentiment["scored"]),
         "edges": dict(graph["edges"]),
+        "failures": [dict(f) for f in manifest["failures"]],
     }
 
 

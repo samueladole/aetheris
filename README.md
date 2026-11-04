@@ -256,8 +256,11 @@ cp .env.example .env      # then fill in real values
 export AETHERIS_ENV_FILE=./.env.secrets
 ```
 
-A malformed or unreadable `.env` produces a warning and the run continues with
+A malformed or unreadable `.env` produces a warning and the CLI continues with
 whatever credentials it does have — a corrupted local file never breaks the CLI.
+A live `aetheris run` then needs only the keys for the providers the pipeline
+fetches from — FRED, Finnhub, and Tiingo — and refuses to start, naming the
+missing ones, without them. The Alpha Vantage and FMP keys are optional.
 Run `aetheris status` to see which providers are configured.
 
 ### Watchlist
@@ -275,6 +278,14 @@ series:
 To change them, add a `[watchlist]` table to the TOML config file (`--config`
 or `AETHERIS_CONFIG`). Omitted keys keep their defaults, and a malformed entry
 is refused with a `ConfigError`.
+
+FRED first releases are requested from `max(influence_window_days,
+price_history_days)` days before the run. FRED caps how many vintage dates one
+request may span: the default 730 days fits DGS10 (daily), but a much longer
+`influence_window_days` on a daily series can exceed the cap. FRED then refuses
+that series (HTTP 400), and the run succeeds without it and lists it under
+`failures`. `aetheris ingest fred series/observations` defaults to the last 730
+days for the same reason; pass `--param realtime_start=YYYY-MM-DD` to change it.
 
 ```toml
 [watchlist]
@@ -613,7 +624,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **569 tests** · **35 API reference pages**
+**5 import contracts kept** · **577 tests** · **35 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

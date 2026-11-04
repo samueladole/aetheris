@@ -1,20 +1,31 @@
 """Tests for FRED and Tiingo request shapes."""
 
+from datetime import date
+
+from src.ingestion import fred_client
 from src.ingestion.fred_client import FredAdapter
 from src.ingestion.market_client import MarketAdapter
 
 
-def test_fred_requests_initial_release_dates():
-    """FRED requests first-release observations by default."""
+def test_fred_requests_initial_release_dates(monkeypatch):
+    """FRED requests first-release observations over the last 730 days by default.
+
+    FRED refuses an initial-release request spanning more vintage dates than it
+    allows (DGS10 over the full history is an HTTP 400), so the default window
+    is bounded.
+    """
+    monkeypatch.setattr(fred_client, "_today", lambda: date(2026, 11, 4))
     req = FredAdapter(api_key="k").series_request("GDP")
-    assert (req.params["output_type"], req.params["realtime_start"]) == ("4", "1776-07-04")
+    assert (req.params["output_type"], req.params["realtime_start"]) == ("4", "2024-11-04")
     assert req.params["realtime_end"] == "9999-12-31"
 
 
 def test_fred_caller_params_override_defaults():
     """Caller parameters override the realtime defaults."""
-    req = FredAdapter(api_key="k").series_request("GDP", output_type="1")
-    assert req.params["output_type"] == "1"
+    req = FredAdapter(api_key="k").series_request(
+        "GDP", output_type="1", realtime_start="2020-01-01"
+    )
+    assert (req.params["output_type"], req.params["realtime_start"]) == ("1", "2020-01-01")
 
 
 def test_tiingo_prices_path():

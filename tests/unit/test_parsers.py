@@ -10,6 +10,7 @@ from src.ingestion.parsers import (
     MacroPoint,
     ParseError,
     PricePoint,
+    fred_window_start,
     parse_finnhub_news,
     parse_finnhub_profile,
     parse_fred_observations,
@@ -51,6 +52,28 @@ def test_fred_first_release_wins_regardless_of_row_order():
     assert parse_fred_observations(body) == [
         MacroPoint(date(2026, 1, 1), date(2026, 2, 13), 1.0)
     ]
+
+
+def test_fred_rows_clipped_to_the_window_start_are_dropped():
+    """A row starting on the requested realtime_start may be a carried-in revision."""
+    body = (
+        b'{"realtime_start": "2024-11-04", "observations": ['
+        b'{"realtime_start":"2024-11-04","date":"2024-09-01","value":"9.9"},'
+        b'{"realtime_start":"2024-11-13","date":"2024-10-01","value":"1.0"}]}'
+    )
+    assert parse_fred_observations(body, window_start=date(2024, 11, 4)) == [
+        MacroPoint(date(2024, 10, 1), date(2024, 11, 13), 1.0)
+    ]
+    # Without a window every row is kept.
+    assert len(parse_fred_observations(body)) == 2
+
+
+def test_fred_window_start_is_read_from_the_echoed_request():
+    """FRED echoes the request's realtime_start at the top of the body."""
+    assert fred_window_start(b'{"realtime_start": "2024-11-04", "observations": []}') == date(
+        2024, 11, 4
+    )
+    assert fred_window_start(b'{"observations": []}') is None
 
 
 def test_tiingo_uses_adjusted_close():

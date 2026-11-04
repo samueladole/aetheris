@@ -350,3 +350,77 @@ def test_resume_of_an_unknown_run_fails(dbos_env, paths, capsys, monkeypatch):
 
     assert code == cli.EXIT_RUNTIME
     assert "no-such-run" in err
+
+
+# ---------------------------------------------------------------------------
+# run: credentials and output
+# ---------------------------------------------------------------------------
+
+_DONE = {
+    "workflow": "aetheris_pipeline",
+    "dry_run": False,
+    "steps": [{"name": name, "state": "SUCCEEDED", "attempts": 1} for name in PIPELINE_STEPS],
+    "summary": {
+        "fetched": 21,
+        "scored": 2,
+        "edges": {"TARGETS": 2},
+        "failures": [
+            {"kind": "macro", "key": "DGS10", "error": "fred series/observations: HTTP 400"}
+        ],
+    },
+}
+
+
+@pytest.fixture()
+def fake_run(paths, monkeypatch):
+    """Stub the engine so ``run`` reports ``_DONE``; record that it started."""
+    started: list[bool] = []
+
+    async def start_async(settings, *, wait=False, **_):
+        started.append(True)
+        return checkpoints.WorkflowHandle(
+            workflow_id="wf-1", status="SUCCESS", result=json.loads(json.dumps(_DONE))
+        )
+
+    monkeypatch.setattr(checkpoints, "launch", lambda settings: None)
+    monkeypatch.setattr(workflows, "start_async", start_async)
+    monkeypatch.setenv("AETHERIS_ENV_FILE", "no-such-file")
+    for name in CREDENTIALS:
+        monkeypatch.delenv(name, raising=False)
+    return started
+
+
+def test_run_needs_only_the_providers_the_pipeline_fetches(fake_run, capsys, monkeypatch):
+    """Without Alpha Vantage and FMP keys a live run still starts."""
+    for name in ("FRED_API_KEY", "FINNHUB_API_KEY", "TIINGO_API_KEY"):
+        monkeypatch.setenv(name, "test-key")
+
+    code, _, err = _cli(capsys, "run", "--trigger", "schedule")
+
+    assert code == cli.EXIT_OK, err
+    assert fake_run == [True]
+
+
+def test_run_without_a_pipeline_credential_is_refused(fake_run, capsys, monkeypatch):
+    """A missing key the pipeline needs is a usage error naming only that provider."""
+    for name in ("FRED_API_KEY", "FINNHUB_API_KEY"):
+        monkeypatch.setenv(name, "test-key")
+
+    code, _, err = _cli(capsys, "run", "--trigger", "schedule")
+
+    assert code == cli.EXIT_USAGE
+    assert "tiingo" in err
+    assert "alpha_vantage" not in err and "fmp" not in err
+    assert fake_run == []
+
+
+def test_run_prints_ingest_failures(fake_run, capsys, monkeypatch):
+    """A partial ingest is reported in the text output, not only in --json."""
+    for name in CREDENTIALS:
+        monkeypatch.setenv(name, "test-key")
+
+    code, out, err = _cli(capsys, "run", "--trigger", "schedule")
+
+    assert code == cli.EXIT_OK, err
+    assert "failures: 1" in out
+    assert "macro DGS10: fred series/observations: HTTP 400" in out

@@ -959,8 +959,7 @@ def _infer_data_type(provider: str, endpoint: str) -> str:
 
 def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
     """`aetheris run` — start or resume a durable pipeline workflow (T024)."""
-    from src.config.providers import get_registry
-    from src.orchestration import checkpoints, triggers, workflows
+    from src.orchestration import checkpoints, steps, triggers, workflows
 
     if args.dry_run:
         from dataclasses import replace
@@ -974,14 +973,15 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 
-    # Credential pre-check: a live (non-dry) run needs at least one provider.
-    registry = get_registry()
+    # Credential pre-check: a live (non-dry) run needs a key for every provider
+    # the pipeline fetches from, and only those.
     if not settings.dry_run:
-        missing = settings.missing_providers(registry.required_credentials())
+        needed = list(steps.pipeline_providers())
+        missing = settings.missing_providers(needed)
         if missing:
             print(
-                f"error: a live run needs provider credentials; missing: {missing}. "
-                "Set them in the environment, or use --dry-run.",
+                f"error: a live run needs credentials for {', '.join(needed)}; "
+                f"missing: {missing}. Set them in the environment, or use --dry-run.",
                 file=sys.stderr,
             )
             return EXIT_USAGE
@@ -1031,6 +1031,11 @@ def _cmd_run(args: argparse.Namespace, settings: Settings) -> int:
             print("  mode:    dry-run (no provider calls)")
         for step in (handle.result or {}).get("steps", []):
             print(f"    - {step['name']}: {step['state']}")
+        failures = ((handle.result or {}).get("summary") or {}).get("failures") or []
+        if failures:
+            print(f"  failures: {len(failures)} (not fetched this run)")
+            for failure in failures:
+                print(f"    - {failure['kind']} {failure['key']}: {failure['error']}")
     return EXIT_OK
 
 

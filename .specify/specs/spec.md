@@ -32,6 +32,10 @@ This project implements an automated, modular, and fault-tolerant financial inte
 - Q: How is `INFLUENCES` derived? → A: Release event study. For each release in `influence_window_days`: the indicator's change from the previous release versus the asset return from the last close available at or before the release to the first close available after it. Pearson r across releases, emitted when there are ≥ 8 releases.
 - Q: How is edge confidence computed? → A: `1 − p`, where p is the two-sided p-value of r from the Fisher z-transform. TARGETS confidence equals its weight.
 
+### Session 2026-11-04
+
+- Q: What real-time window do FRED first-release requests use? → A: Supersedes the 2026-10-19 `realtime_start=1776-07-04` answer. FRED caps the number of vintage dates one request may span, and DGS10 over the full history exceeds it (HTTP 400 "exceeds the maximum number of vintage dates allowed", 5132 vintage dates; verified live 2026-11-04). The pipeline requests `output_type=4`, `realtime_end=9999-12-31`, and `realtime_start = at − max(influence_window_days, price_history_days)` (verified live: DGS10 with a 730-day window returns 200 with 499 first-release rows). The FRED adapter's own default for ad-hoc requests is the last 730 days. FRED clips a vintage that began before the window to the window start, so a row whose `realtime_start` equals the requested `realtime_start` has no known first-release date and is dropped. A long `influence_window_days` on a daily series can still exceed the limit; that series' fetch then fails and is reported in the run's `failures`.
+
 ---
 
 ## 2. High-Level Architecture

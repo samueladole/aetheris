@@ -17,6 +17,7 @@ from src.config.settings import Settings
 from src.config.watchlist import DEFAULT_WATCHLIST
 from src.graph.repository import GraphRepository
 from src.graph.schema import GraphDatabase
+from src.ingestion.base import ProviderUnavailable
 from src.orchestration import checkpoints, steps
 from src.orchestration.workflows import PIPELINE_STEPS, STEP_GRAPH, run_to_completion
 from tests.integration.fakes import RoutedHttpClient, fixture_routes
@@ -59,6 +60,20 @@ def test_run_writes_the_graph(dbos_env, tmp_path):
     counts = _counts(settings)
     assert counts["graph_edge"] > 0
     assert counts["sentiment_metric"] == summary["scored"]
+
+
+def test_ingest_failures_are_in_the_summary(dbos_env, tmp_path):
+    """A partial ingest still succeeds, but the summary names what was not fetched."""
+    settings = _settings(tmp_path)
+    rejected = ProviderUnavailable("fred", "series/observations", 400, "Bad Request")
+    routed = RoutedHttpClient(fixture_routes({"api.stlouisfed.org|series_id=DGS10": rejected}))
+
+    handle = asyncio.run(run_to_completion(settings, http=routed, watchlist=WL))
+
+    assert handle.status == "SUCCESS", handle.result
+    failures = handle.result["summary"]["failures"]
+    assert [(f["kind"], f["key"]) for f in failures] == [("macro", "DGS10")]
+    assert "Bad Request" in failures[0]["error"]
 
 
 def test_resume_does_not_refetch(dbos_env, tmp_path, monkeypatch):
@@ -120,4 +135,4 @@ def test_dry_run_still_makes_no_calls(dbos_env, tmp_path):
     assert handle.status == "SUCCESS", handle.result
     assert all(s["state"] == "SUCCEEDED" for s in handle.result["steps"])
     assert routed.calls == []
-    assert handle.result["summary"] == {"fetched": 0, "scored": 0, "edges": {}}
+    assert handle.result["summary"] == {"fetched": 0, "scored": 0, "edges": {}, "failures": []}

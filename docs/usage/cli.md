@@ -44,6 +44,10 @@ aetheris run --trigger schedule|event [--dry-run] [--resume WORKFLOW_ID]
 
 - `--dry-run` validates configuration and quotas without calling any provider.
 - `--resume WORKFLOW_ID` resumes from the first failed step.
+- A live run needs `FRED_API_KEY`, `FINNHUB_API_KEY`, and `TIINGO_API_KEY`; the
+  Alpha Vantage and FMP keys are optional.
+- A fetch that fails does not fail the run: the output lists it under
+  `failures` (`summary.failures` with `--json`).
 
 ### `aetheris ingest`
 

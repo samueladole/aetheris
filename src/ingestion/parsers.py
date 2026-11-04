@@ -74,8 +74,37 @@ def _rows(body: bytes, key: str | None) -> list[Any]:
     return data
 
 
-def parse_fred_observations(body: bytes) -> list[MacroPoint]:
-    """Parse FRED observations, dropping missing values and later revisions."""
+def fred_window_start(body: bytes) -> date | None:
+    """The ``realtime_start`` FRED echoes from the request, or ``None`` if absent."""
+    data = _load(body)
+    value = data.get("realtime_start") if isinstance(data, dict) else None
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ParseError(f"malformed FRED realtime_start: {value!r}") from exc
+
+
+def parse_fred_observations(
+    body: bytes, *, window_start: date | None = None
+) -> list[MacroPoint]:
+    """Parse FRED observations, dropping missing values and later revisions.
+
+    FRED clips every vintage to the requested real-time window, so a value
+    already in force before ``window_start`` comes back with its
+    ``realtime_start`` set to the window start. Such a row may be a revision
+    carried into the window rather than a first release, so when
+    ``window_start`` is given those rows are dropped. A genuine first release
+    on that exact day is dropped with them; that is the conservative choice.
+
+    Args:
+        body: The stored response body.
+        window_start: The ``realtime_start`` the request asked for.
+
+    Returns:
+        One point per observation date, in date order.
+    """
     earliest: dict[date, MacroPoint] = {}
     try:
         for row in _rows(body, "observations"):
@@ -83,6 +112,8 @@ def parse_fred_observations(body: bytes) -> list[MacroPoint]:
                 continue
             observed = date.fromisoformat(row["date"])
             released = date.fromisoformat(row["realtime_start"])
+            if window_start is not None and released == window_start:
+                continue
             kept = earliest.get(observed)
             # First release wins, whatever order the vintages arrive in.
             if kept is None or released < kept.released_on:
@@ -146,6 +177,7 @@ __all__ = [
     "NewsItem",
     "ParseError",
     "PricePoint",
+    "fred_window_start",
     "parse_finnhub_news",
     "parse_finnhub_profile",
     "parse_fred_observations",

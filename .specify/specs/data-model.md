@@ -141,8 +141,13 @@ Consequences encoded in the schema:
   America/New_York, or at 23:59:59 America/New_York that day when `release_time` is unset. A daily
   close is available at 16:00 America/New_York on its trading day. Implemented by
   `release_available_at(released_on, release_time)` in `src/graph/edges.py`.
-- First-release date: FRED is queried with `output_type=4`, `realtime_start=1776-07-04`,
-  `realtime_end=9999-12-31`; each observation's `realtime_start` is its first-release date.
+- First-release date: FRED is queried with `output_type=4`, `realtime_end=9999-12-31`, and a
+  windowed `realtime_start = at − max(influence_window_days, price_history_days)`; each
+  observation's `realtime_start` is its first-release date. The window is required: FRED refuses a
+  request spanning more vintage dates than it allows (DGS10 from `1776-07-04` is an HTTP 400). FRED
+  clips a vintage that began before the window to the window start, so a row whose `realtime_start`
+  equals the requested `realtime_start` has no known first-release date and is dropped rather than
+  stamped with a false release date (spec clarification, session 2026-11-04).
 - Acceptance test (FR-014): a fixed aligned output must be reproducible from a fixed input
   cassette — same inputs → same graph state, byte-identical.
 

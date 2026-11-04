@@ -28,6 +28,11 @@ aetheris run [--trigger schedule|event] [--dry-run] [--resume WORKFLOW_ID]
 - `--resume WORKFLOW_ID` resumes a previously checkpointed run from the first failed step (FR-002).
 - `--dry-run` validates configuration, provider credentials, and quotas **without** issuing any
   live provider call. This is the CI smoke test.
+- A live run needs credentials for the providers the pipeline fetches from — FRED, Finnhub, and
+  Tiingo — and refuses to start (exit `2`) when one of them is missing. Alpha Vantage and FMP keys
+  are not required.
+- A fetch that fails does not fail the run. The result's `summary.failures` lists each failed
+  fetch (`kind`, `key`, `error`, credentials masked), and the text output prints them.
 
 ### `aetheris ingest`
 Run a single ingestion adapter directly (FR-004 … FR-008, FR-015).

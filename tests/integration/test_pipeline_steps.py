@@ -7,6 +7,7 @@ provider call. Each test writes to its own raw store and DuckDB file.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from datetime import UTC, date, datetime, timedelta
@@ -144,6 +145,30 @@ def test_ingest_manifest_covers_the_watchlist(tmp_path):
         next(e["payload_id"] for e in m["entries"] if e["kind"] == "prices")
     )
     assert stored is not None and stored.request_params["startDate"] == start
+
+
+def test_macro_fetches_are_windowed(tmp_path):
+    """FRED is asked for vintages from the longest derivation window only.
+
+    An initial-release request over FRED's full history exceeds its vintage-date
+    limit for a daily series (DGS10 is an HTTP 400), so every macro fetch passes
+    ``realtime_start = now - max(influence_window_days, price_history_days)``.
+    """
+    wl = dataclasses.replace(WL, influence_window_days=1000)
+    registry, http = _registry(tmp_path)
+
+    m = run_ingest(registry, wl, now=NOW)
+
+    start = (NOW - timedelta(days=1000)).date().isoformat()
+    fred_calls = [c for c in http.calls if "stlouisfed" in c]
+    assert len(fred_calls) == len(wl.macro)
+    assert all(f"realtime_start={start}" in c for c in fred_calls)
+    macro_ids = [e["payload_id"] for e in m["entries"] if e["kind"] == "macro"]
+    assert {registry.payload_store.get(i).request_params["realtime_start"] for i in macro_ids} == {
+        start
+    }
+    # The CLI still finds the windowed payloads by series id.
+    assert manifest_from_store(registry.payload_store, wl, at=NOW)["entries"] == m["entries"]
 
 
 def test_one_failed_series_is_recorded_and_the_rest_continue(tmp_path):
@@ -416,6 +441,29 @@ def _fred_monthly(first: date, count: int) -> bytes:
             }
         )
     return json.dumps({"observations": rows}).encode()
+
+
+def test_fred_rows_clipped_to_the_window_start_are_not_written(tmp_path, db):
+    """A row whose realtime_start is the requested window start has no known release."""
+    start = (NOW - timedelta(days=WL.price_history_days)).date().isoformat()
+    body = json.dumps(
+        {
+            "realtime_start": start,
+            "observations": [
+                {"realtime_start": start, "date": "2024-09-01", "value": "9.9"},
+                {"realtime_start": "2026-02-13", "date": "2026-01-01", "value": "326.588"},
+            ],
+        }
+    ).encode()
+    routes = fixture_routes({"api.stlouisfed.org|series_id=CPIAUCSL": body})
+
+    _integrate(tmp_path, db, routes)
+
+    rows = db.execute(
+        "SELECT CAST(observed_at AS DATE) FROM macro_observation "
+        "WHERE indicator_code = 'FRED:CPIAUCSL'"
+    ).fetchall()
+    assert rows == [(date(2026, 1, 1),)]
 
 
 def test_graph_integration_derives_correlation_and_influence_edges(tmp_path, db):
