@@ -23,6 +23,12 @@ except ModuleNotFoundError:  # pragma: no cover
 _ASSET_ID_RE = re.compile(r"^(equity|forex|crypto|index):[A-Z0-9.]+:[A-Z0-9.\-]+$")
 _RELEASE_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
+# The graph schema's Frequency values. Checked when the watchlist loads, so a
+# typo fails before ingestion spends free-tier quota rather than at the graph
+# step. The config layer does not import the graph layer, so the values are
+# repeated here; a unit test keeps the two in step.
+FREQUENCIES: tuple[str, ...] = ("daily", "weekly", "monthly", "quarterly", "annual")
+
 
 @dataclass(frozen=True)
 class WatchedAsset:
@@ -129,11 +135,16 @@ def _parse_series(entry: Any, index: int) -> WatchedSeries:
     where = f"watchlist.macro[{index}]"
     if not isinstance(entry, dict):
         raise ConfigError(f"{where} must be a table")
+    frequency = _require_str(entry, "frequency", where)
+    if frequency not in FREQUENCIES:
+        raise ConfigError(
+            f"{where}: frequency must be one of {', '.join(FREQUENCIES)}, got {frequency!r}"
+        )
     return WatchedSeries(
         series_id=_require_str(entry, "series_id", where),
         name=_require_str(entry, "name", where),
         unit=_require_str(entry, "unit", where),
-        frequency=_require_str(entry, "frequency", where),
+        frequency=frequency,
         seasonal_adjustment=_require_str(entry, "seasonal_adjustment", where),
         release_time=_parse_release_time(entry.get("release_time"), where),
     )

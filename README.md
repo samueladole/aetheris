@@ -624,7 +624,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **584 tests** · **35 API reference pages**
+**5 import contracts kept** · **588 tests** · **35 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration

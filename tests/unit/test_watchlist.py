@@ -82,3 +82,23 @@ def test_invalid_release_time_is_rejected(tmp_path):
     )
     with pytest.raises(ConfigError):
         load_watchlist(str(path))
+
+
+@pytest.mark.parametrize("bad", ["Monthly", "yearly", "semiannual"])
+def test_invalid_frequency_is_rejected_at_load(tmp_path, bad):
+    """An unknown frequency fails when the watchlist loads, before any fetch."""
+    path = tmp_path / "a.toml"
+    path.write_text(
+        '[[watchlist.macro]]\nseries_id = "X"\nname = "X"\nunit = "u"\n'
+        f'frequency = "{bad}"\nseasonal_adjustment = "SA"\n'
+    )
+    with pytest.raises(ConfigError, match="frequency"):
+        load_watchlist(str(path))
+
+
+def test_watchlist_frequencies_match_the_graph_schema():
+    """The load-time check accepts exactly the graph's Frequency values."""
+    from src.config.watchlist import FREQUENCIES
+    from src.graph.schema import Frequency
+
+    assert set(FREQUENCIES) == {f.value for f in Frequency}
