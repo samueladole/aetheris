@@ -828,8 +828,9 @@ def _cmd_graph_upsert(args: argparse.Namespace, settings: Settings) -> int:
     ):
         if store is None:
             print(
-                "nothing to upsert: no raw payloads. Run `aetheris ingest` first, "
-                "then `aetheris score`, then `aetheris graph upsert`.",
+                "nothing to upsert: no raw payloads. Fetch them with `aetheris run` "
+                "or `aetheris ingest`, then run `aetheris graph upsert` again; it "
+                "scores the stored news itself.",
                 file=sys.stderr,
             )
             return EXIT_USAGE
@@ -866,7 +867,16 @@ def _parse_params(pairs: list[str]) -> dict[str, str]:
 
 
 def _cmd_ingest(args: argparse.Namespace, settings: Settings) -> int:
-    """`aetheris ingest` — run one adapter through the registry (T039)."""
+    """`aetheris ingest` — fetch one endpoint through the registry (T039).
+
+    ``<provider>`` is validated, and must declare ``<endpoint>``, but it does
+    not pin the provider: the registry serves the endpoint from the first
+    provider in fallback order (FR-020) that declares it and is available, so
+    the payload can come from another provider. The output names the provider
+    that served it. FRED requests default to first releases from the last 730
+    days (FRED's vintage-date limit); pass ``--param realtime_start=...`` to
+    change the window.
+    """
     from src.config.providers import get_registry
     from src.ingestion.base import ProviderUnavailable
     from src.orchestration.wiring import build_ingestion_registry

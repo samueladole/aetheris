@@ -59,6 +59,12 @@ aetheris ingest <provider> <endpoint> [--param KEY=VALUE] [--data-type TYPE] [--
 
 Providers: `fred`, `alpha_vantage`, `finnhub`, `fmp`, `tiingo`.
 
+The provider must declare the endpoint, but it does not pin who serves it: the
+registry tries every provider that declares the endpoint, in fallback order,
+and the output names the one that answered. FRED requests default to first
+releases from the last 730 days; pass `--param realtime_start=YYYY-MM-DD` to
+change the window.
+
 ### `aetheris docs`
 
 Build, preview, or open the documentation site.

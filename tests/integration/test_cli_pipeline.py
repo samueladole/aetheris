@@ -116,6 +116,8 @@ def test_graph_upsert_without_payloads_is_a_usage_error(paths, capsys):
 
     assert code == cli.EXIT_USAGE
     assert "nothing to upsert" in err
+    # upsert scores the news itself, so the hint must not send users to `score`.
+    assert "aetheris score" not in err
 
 
 def test_graph_upsert_window_limits_the_metrics(paths, capsys):
