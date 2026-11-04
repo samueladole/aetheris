@@ -76,14 +76,14 @@ finished far inside the target but does not establish the percentile.
 
 ## Second live pipeline run
 
-**Run**: 2026-11-04, after the FRED vintage-window fix, with its own data files
-in `.superpowers/sdd/plan/live2/` (`graph.duckdb`, `raw.db`):
+**Run**: 2026-11-04, after the FRED vintage-window fix, with its own scratch
+data files (`live2/graph.duckdb`, `live2/raw.db`), outside the repository's
+default ones, and the repository's `.env` for credentials:
 
 ```bash
-cd .superpowers/sdd/plan && mkdir -p live2 && \
-AETHERIS_ENV_FILE=/Users/samuel/Documents/GitHub/aetheris/.env /usr/bin/time -p \
-/Users/samuel/Documents/GitHub/aetheris/.venv/bin/aetheris --db live2/graph.duckdb \
---raw live2/raw.db --json run --trigger schedule
+mkdir -p live2 && \
+AETHERIS_ENV_FILE=<repo>/.env /usr/bin/time -p \
+aetheris --db live2/graph.duckdb --raw live2/raw.db --json run --trigger schedule
 ```
 
 It made 22 requests: 5 FRED, 8 Tiingo, 8 Finnhub profiles, and 1 Finnhub news.

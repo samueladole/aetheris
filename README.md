@@ -186,6 +186,7 @@ Rejected on licence grounds:
 │   └── docs.yml                 # GitHub Pages deploy (feature 001-docs-site-cicd)
 ├── docs/                        # documentation site source
 │   ├── index.md · installation.md
+│   ├── architecture.md · codebase.md · roadmap.md
 │   ├── usage/                   # CLI reference, accessibility
 │   ├── stylesheets/ · overrides/
 │   ├── validation.md            # recorded gate results
@@ -442,6 +443,10 @@ checked reliably against the theme, and two theme defects. Rules outside the
 covered list are *unverified, not compliant*.
 
 Validation results are recorded in [`docs/validation.md`](docs/validation.md).
+
+For depth beyond this README, the site carries an
+[architecture guide](docs/architecture.md), a [codebase guide](docs/codebase.md),
+and a [roadmap](docs/roadmap.md) of milestones achieved and planned.
 
 ---
 

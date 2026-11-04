@@ -43,7 +43,8 @@ aetheris run --trigger schedule|event [--dry-run] [--resume WORKFLOW_ID]
 ```
 
 - `--dry-run` validates configuration and quotas without calling any provider.
-- `--resume WORKFLOW_ID` resumes from the first failed step.
+- `--resume WORKFLOW_ID` resumes from the first failed step. Steps that already
+  succeeded return their checkpointed results, so a resume never re-fetches.
 - A live run needs `FRED_API_KEY`, `FINNHUB_API_KEY`, and `TIINGO_API_KEY`; the
   Alpha Vantage and FMP keys are optional.
 - A fetch that fails does not fail the run: the output lists it under
@@ -77,15 +78,60 @@ aetheris docs open       # print the preview URL
 
 `serve` binds to localhost only and is refused for any other host.
 
-### `aetheris query`
+### `aetheris score`
 
-Read-only graph queries.
+Score news text with a sentiment model and print the payloads.
 
 ```bash
-aetheris query influencers --id equity:NASDAQ:AAPL --top 5 [--json]
-aetheris query sentiment   --entity equity:NASDAQ:AAPL --start ISO8601 [--json]
-aetheris query edges       --from NODE_ID [--min-confidence FLOAT] [--json]
+aetheris score [--entity ENTITY_ID] [--since ISO8601] [--model MODEL] [--temperature T]
+aetheris score --text "Company beats expectations" [--text "..."]
 ```
+
+- Without `--text` it scores the news already stored by `aetheris ingest` or
+  `aetheris run`, matched to the watchlist, and prints one payload per article
+  per matched asset. Nothing is written.
+- `--model` takes an id from the licence-checked manifest; the default is the
+  deterministic stub scorer.
+- `--entity` keeps one asset's payloads; `--since` keeps text published from
+  that time.
+
+### `aetheris graph`
+
+```bash
+aetheris graph upsert [--since ISO8601] [--until ISO8601] [--rebuild-edges]
+aetheris graph query entity|sentiment|edges|influencers|assets [options]
+```
+
+`graph upsert` scores the stored news, aligns everything as of now, and writes
+nodes, observations, sentiment metrics, and derived edges into the graph. It
+prints the counts written, and exits `2` when the raw store is empty.
+`--since/--until` limit the sentiment metrics written; `--rebuild-edges` is
+accepted, but edges are recomputed on every upsert anyway.
+
+`graph query` runs read-only queries:
+
+```bash
+aetheris graph query entity      --id equity:NASDAQ:AAPL
+aetheris graph query sentiment   --entity equity:NASDAQ:AAPL --start ISO8601 [--end ISO8601]
+aetheris graph query edges       --from NODE_ID [--rel REL_TYPE] [--min-confidence FLOAT]
+aetheris graph query influencers --id equity:NASDAQ:AAPL [--top N] [--min-confidence FLOAT]
+aetheris graph query assets      [--class equity|forex|crypto|index] [--top N]
+```
+
+All datetimes must carry a time zone and come back in UTC. The CLI contract
+names this command `aetheris query`; the implementation nests it under `graph`.
+
+### `aetheris evaluate`
+
+Evaluate the graph's sentiment scores from the last 24 hours against the
+previous 7 days, and log the result to MLflow when it is available.
+
+```bash
+aetheris evaluate [--entity ENTITY_ID] [--min-confidence FLOAT] [--drift-threshold FLOAT] [--json]
+```
+
+The same filters apply to the current scores and to the drift reference. An
+empty graph prints `evaluated 0 item(s)` and exits `0`.
 
 ### `aetheris check-licenses`
 
