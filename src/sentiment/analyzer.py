@@ -25,6 +25,13 @@ from src.sentiment.models import ModelSpec
 from src.sentiment.models import get as get_model
 
 
+class TextTooLongError(ValueError):
+    """The text is longer than the model's context limit.
+
+    Raised instead of truncating silently; the caller chunks or skips the text.
+    """
+
+
 class Polarity(float):
     """A scored item: signed polarity **as a float**, plus calibrated confidence.
 
@@ -185,7 +192,7 @@ def _predict_with_weights(text: str, spec: ModelSpec) -> list[float]:
         ) from exc
 
     if spec.max_length and len(text) > spec.max_length:
-        raise ValueError(
+        raise TextTooLongError(
             f"text is {len(text)} characters, over {spec.id}'s {spec.max_length} "
             "context limit. Chunk upstream rather than truncating silently."
         )
@@ -227,6 +234,7 @@ def batch_score(
 __all__ = [
     "Polarity",
     "StubModel",
+    "TextTooLongError",
     "batch_score",
     "map_logits",
     "score_from_probs",

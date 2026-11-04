@@ -54,7 +54,7 @@ from src.ingestion.parsers import (
 from src.ingestion.payloads import RawPayload, RawPayloadStore
 from src.ingestion.registry import IngestionRegistry
 from src.observability.evaluate import compute_drift_report
-from src.sentiment.analyzer import score_text
+from src.sentiment.analyzer import TextTooLongError, score_text
 from src.sentiment.entities import WatchTerms, resolve_entities
 from src.sentiment.schema import (
     Calibration,
@@ -302,7 +302,8 @@ def run_sentiment(
 
     The scored text is ``headline + ". " + summary``. An article is scored once
     and yields one payload per matched asset. Articles repeated across news
-    payloads are counted and scored once.
+    payloads are counted and scored once. An article published after the
+    manifest's ``at`` is counted in ``after_at`` and not scored (no lookahead).
 
     Args:
         store: The raw payload store.
@@ -313,15 +314,19 @@ def run_sentiment(
 
     Returns:
         ``{"scored": [{"payload", "match_weight"}], "articles": int,
-        "unmatched": int, "rejected": int}``, where ``rejected`` counts payloads
-        that failed validation.
+        "after_at": int, "unmatched": int, "rejected": int}``. ``articles``
+        counts every distinct article read, ``after_at`` those skipped for
+        being published after ``at``, and ``rejected`` the payloads not
+        produced because validation failed or the analyzer refused the text
+        (over its model's context limit).
     """
+    at = _utc(datetime.fromisoformat(manifest["at"]), "manifest at")
     terms = build_watch_terms(watchlist, _profiles(store, manifest))
     calibration = Calibration(
         method="temperature_scaling", temperature=temperature, calibrated_on="pipeline"
     )
     scored: list[dict[str, Any]] = []
-    articles = unmatched = rejected = 0
+    articles = after_at = unmatched = rejected = 0
     seen: set[str] = set()
     for entry in _entries(manifest, NEWS):
         for item in parse_finnhub_news(_body(store, entry["payload_id"])):
@@ -329,15 +334,23 @@ def run_sentiment(
                 continue
             seen.add(item.article_id)
             articles += 1
+            if item.published_at > at:
+                after_at += 1
+                continue
             headline, summary = item.headline or "", item.summary or ""
             matches = resolve_entities(headline, summary, terms)
             if not matches:
                 unmatched += 1
                 continue
             text = f"{headline}. {summary}"
-            polarity, _probabilities, model = score_text(
-                text, model_id=model_id, temperature=temperature
-            )
+            try:
+                polarity, _probabilities, model = score_text(
+                    text, model_id=model_id, temperature=temperature
+                )
+            except TextTooLongError:
+                # Over the model's context limit: no payload for any match.
+                rejected += len(matches)
+                continue
             provenance = Provenance(
                 payload_id=entry["payload_id"],
                 text_hash=text_hash(text),
@@ -360,7 +373,13 @@ def run_sentiment(
                     rejected += 1
                     continue
                 scored.append({"payload": payload, "match_weight": match.weight})
-    return {"scored": scored, "articles": articles, "unmatched": unmatched, "rejected": rejected}
+    return {
+        "scored": scored,
+        "articles": articles,
+        "after_at": after_at,
+        "unmatched": unmatched,
+        "rejected": rejected,
+    }
 
 
 def _midnight(day: date) -> datetime:

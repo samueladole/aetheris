@@ -136,6 +136,29 @@ def _summary(
     }
 
 
+def run_at(trigger_output: Mapping[str, Any]) -> str:
+    """The run's as-of time from the trigger step's checkpointed output.
+
+    Args:
+        trigger_output: What the trigger step returned.
+
+    Returns:
+        The ISO-8601 ``at`` the trigger fixed.
+
+    Raises:
+        WorkflowError: When the output has no ``at``: the run was checkpointed
+            by the pipeline before it was wired to the real steps, and resuming
+            it cannot reproduce a consistent run.
+    """
+    at = trigger_output.get("at")
+    if not isinstance(at, str):
+        raise WorkflowError(
+            "this run predates the wired pipeline; start a new run "
+            "(its trigger checkpoint has no as-of time)"
+        )
+    return at
+
+
 def register_workflow(
     settings: Settings,
     *,
@@ -283,7 +306,7 @@ def register_workflow(
 
         dry_run = settings.dry_run
         with span("pipeline.workflow", **{"aetheris.workflow": WORKFLOW_NAME}):
-            at = (await run(STEP_TRIGGER, trigger))["at"]
+            at = run_at(await run(STEP_TRIGGER, trigger))
             manifest = await run(STEP_INGEST, ingest, dry_run, at)
             scored = await run(STEP_SENTIMENT, sentiment, dry_run, manifest)
             graph = await run(STEP_GRAPH, graph_integration, dry_run, manifest, scored, at)
@@ -418,6 +441,7 @@ __all__ = [
     "build_registry",
     "register_workflow",
     "resume_to_completion",
+    "run_at",
     "run_to_completion",
     "start",
     "start_async",

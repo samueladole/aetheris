@@ -145,3 +145,15 @@ class TestPolarityDataclass:
         assert isinstance(score, Polarity)
         assert hasattr(score, "polarity")
         assert hasattr(score, "confidence")
+
+
+def test_text_over_the_context_limit_raises_text_too_long():
+    """Over-limit text is refused with a ValueError subclass callers can catch alone."""
+    pytest.importorskip("transformers")
+    from src.sentiment.analyzer import TextTooLongError, _predict_with_weights
+    from src.sentiment.models import ModelSpec
+
+    spec = ModelSpec(id="m", revision="0", license="MIT", max_length=10)
+    with pytest.raises(TextTooLongError, match="context limit"):
+        _predict_with_weights("x" * 11, spec)
+    assert issubclass(TextTooLongError, ValueError)

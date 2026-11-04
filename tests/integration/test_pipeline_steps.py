@@ -33,6 +33,7 @@ from src.orchestration.steps import (
     run_sentiment,
 )
 from src.orchestration.wiring import build_ingestion_registry
+from src.sentiment.analyzer import TextTooLongError
 from src.sentiment.entities import WatchTerms, resolve_entities
 from tests.integration.fakes import PROFILE, RoutedHttpClient, UnroutedRequest, fixture_routes
 
@@ -303,6 +304,36 @@ def test_sentiment_payloads_trace_to_the_raw_payload(tmp_path):
     ).isoformat()
     for item in s["scored"]:
         assert item["payload"]["provenance"]["payload_id"] == news_id
+
+
+def test_news_published_after_at_is_not_scored(tmp_path):
+    """No lookahead: an article published after the manifest's ``at`` is skipped."""
+    store, m = _ingest(tmp_path)
+    first = datetime.fromtimestamp(1791885473, UTC)
+    early = {**m, "at": (first + timedelta(seconds=50)).isoformat()}
+
+    s = run_sentiment(store, early, WL)
+
+    assert [i["payload"]["source_reference"] for i in s["scored"]] == ["finnhub:news:8614107"]
+    assert s["after_at"] == 2
+    assert s["articles"] == 3 and s["unmatched"] == 0
+    assert run_sentiment(store, m, WL)["after_at"] == 0
+
+
+def test_an_over_limit_article_is_rejected_not_fatal(tmp_path, monkeypatch):
+    """The analyzer's context-limit error counts as rejected; the step goes on."""
+    import src.orchestration.steps as steps_module
+
+    def over_limit(text, **_):
+        raise TextTooLongError("text is 9000 characters, over m's 512 context limit")
+
+    store, m = _ingest(tmp_path)
+    monkeypatch.setattr(steps_module, "score_text", over_limit)
+
+    s = run_sentiment(store, m, WL)
+
+    assert s["scored"] == []
+    assert s["rejected"] == 2  # two matched AAPL articles, one payload each
 
 
 @pytest.mark.parametrize("blank", ["", "   "])
