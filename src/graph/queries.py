@@ -34,11 +34,23 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _utc_value(value: Any) -> Any:
+    """Return datetimes as aware UTC; leave every other value untouched."""
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+    return value
+
+
 def _rows(db: GraphDatabase, sql: str, params: list[Any]) -> list[dict[str, Any]]:
     """Execute and return rows as dicts, so column order is never a contract."""
     result = db.execute(sql, params)
     names = [d[0] for d in result.description]
-    return [dict(zip(names, row, strict=True)) for row in result.fetchall()]
+    return [
+        {name: _utc_value(value) for name, value in zip(names, row, strict=True)}
+        for row in result.fetchall()
+    ]
 
 
 def sentiment_series(
@@ -71,6 +83,33 @@ def sentiment_series(
         " AND confidence >= ?"
         " ORDER BY timestamp ASC",
         [entity_id, start, end, min_confidence],
+    )
+
+
+def sentiment_scores(
+    db: GraphDatabase,
+    *,
+    start: datetime,
+    end: datetime,
+) -> list[dict[str, Any]]:
+    """Every entity's sentiment scores in the half-open window ``[start, end)``.
+
+    Rows carry ``metric_id``, ``entity_id``, ``score``, and ``confidence``, ordered
+    by timestamp then ``metric_id`` so the result never depends on storage order.
+    Evaluation reads this as its drift reference.
+    """
+    start, end = _as_utc(start), _as_utc(end)
+    if start >= end:
+        raise QueryError(
+            f"invalid window: start {start.isoformat()} is not before end "
+            f"{end.isoformat()}"
+        )
+    return _rows(
+        db,
+        "SELECT metric_id, entity_id, score, confidence FROM sentiment_metric"
+        " WHERE timestamp >= ? AND timestamp < ?"
+        " ORDER BY timestamp ASC, metric_id ASC",
+        [start, end],
     )
 
 
@@ -256,6 +295,7 @@ __all__ = [
     "edges_to",
     "get_entity",
     "list_assets",
+    "sentiment_scores",
     "sentiment_series",
     "top_influencers",
     "two_hop_path",

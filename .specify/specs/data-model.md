@@ -98,12 +98,19 @@ Directed: `MacroIndicator` → `Asset` (or `MacroIndicator` → `MacroIndicator`
 - `weight`: signed influence strength. Negative values are semantically meaningful (an inverse
   relationship, e.g. rising rates depressing an equity).
 - `confidence`: from statistical significance of the fitted influence over the window.
+- Derivation: release event study. For each release within `influence_window_days`, pair the
+  indicator's change from the previous release with the asset return from the last close available
+  at or before the release to the first close available after it. `weight` is Pearson r across
+  releases, emitted only when there are at least 8 releases. `confidence = 1 − p`, with p the
+  two-sided p-value of r from the Fisher z-transform.
 
 ### 2.2 `CORRELATES_WITH`
 Undirected semantically, stored as two directed rows (`A→B` and `B→A`) or one with a canonical
 ordering — **canonical ordering (`src_node < dst_node`)** is chosen to prevent duplicate pairs.
 - `weight`: Pearson correlation coefficient over the observation window, `r ∈ [-1, 1]`.
 - `confidence`: from significance test and `observation_count`.
+- Derivation: Pearson r of daily log returns over `correlation_window_days`, emitted only when
+  n ≥ 20. `confidence = 1 − p`, with p the two-sided p-value of r from the Fisher z-transform.
 
 ### 2.3 `TARGETS`
 Directed: `SentimentMetric` → `Asset` (or → `MacroIndicator`). This is the edge that attaches each
@@ -112,6 +119,9 @@ scored text to the entity it describes.
   confidence).
 - Provenance: paired with `SentimentMetric.source_reference` so a consumer can always trace an edge
   back to the article that produced it.
+- Derivation: a ticker (case-sensitive, whole word or `$TICKER`) or name (case-insensitive, whole
+  phrase, not followed by a letter or digit) in the headline gives `weight` 1.0; a match only in the
+  summary gives 0.6. `confidence` equals `weight`. Unmatched articles are counted, not scored.
 
 ---
 
@@ -127,6 +137,17 @@ Consequences encoded in the schema:
 - `MacroIndicator` observations must store both: a CPI print released on the 12th for January data
   is *not* available to a graph state on January 31. This is the single most common way a financial
   pipeline leaks future information, and it is why the field pair is mandatory rather than optional.
+- Availability rule: an observation is available at its release date plus `release_time` in
+  America/New_York, or at 23:59:59 America/New_York that day when `release_time` is unset. A daily
+  close is available at 16:00 America/New_York on its trading day. Implemented by
+  `release_available_at(released_on, release_time)` in `src/graph/edges.py`.
+- First-release date: FRED is queried with `output_type=4`, `realtime_end=9999-12-31`, and a
+  windowed `realtime_start = at − max(influence_window_days, price_history_days)`; each
+  observation's `realtime_start` is its first-release date. The window is required: FRED refuses a
+  request spanning more vintage dates than it allows (DGS10 from `1776-07-04` is an HTTP 400). FRED
+  clips a vintage that began before the window to the window start, so a row whose `realtime_start`
+  equals the requested `realtime_start` has no known first-release date and is dropped rather than
+  stamped with a false release date (spec clarification, session 2026-11-04).
 - Acceptance test (FR-014): a fixed aligned output must be reproducible from a fixed input
   cassette — same inputs → same graph state, byte-identical.
 
@@ -143,6 +164,7 @@ Consequences encoded in the schema:
 | `schema_version` | Payload schema version (FR-015) |
 | `body` | Raw response bytes, stored verbatim |
 | `fetched_at` | UTC |
+| `request_params` | Caller-supplied request parameters (JSON), never credentials |
 | `ttl_seconds` | From registry; drives the caching layer (FR-007) |
 
 Immutability is what makes `vcrpy` cassettes, replay-based integration tests, and post-hoc

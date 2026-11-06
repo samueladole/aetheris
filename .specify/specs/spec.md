@@ -21,6 +21,21 @@ This project implements an automated, modular, and fault-tolerant financial inte
 - Q: How will other tools read the Knowledge Graph in v1 — through a query interface the pipeline exposes, or only by reading the storage engine's files directly? → A: Read-only in-process Python API plus a CLI for ad-hoc queries; no network service.
 - Q: What unit does the orchestrator checkpoint and resume at — a whole workflow step, or finer-grained work inside a step — and what bounds govern a step's retries before it is declared failed? (FR-002, FR-003) → A: Step-level checkpointing with bounded backoff (base 1s, ×2, max 5 attempts, jitter); on exhaustion the step is marked failed and its compensating action runs.
 
+### Session 2026-10-19
+
+- Q: Which assets and macro series does the pipeline fetch? → A: A configured watchlist (`[watchlist]` in the config file, loaded by `load_watchlist`); the defaults are eight US equities (AAPL, MSFT, NVDA, AMZN, JPM, XOM, JNJ, KO) and five FRED series (GDP, CPIAUCSL, UNRATE, FEDFUNDS, DGS10).
+- Q: How is a FRED observation's first-release date obtained? → A: FRED requests use `output_type=4`, `realtime_start=1776-07-04`, `realtime_end=9999-12-31`, so each observation's `realtime_start` is its first-release date (verified live 2026-10-19: January 2026 CPI → 2026-02-13).
+- Q: When is a value available for the as-of join? → A: An observation is available at its release date plus `release_time` in America/New_York, or at 23:59:59 America/New_York that day when `release_time` is unset. A daily close is available at 16:00 America/New_York on its trading day. The rule is implemented by `release_available_at(released_on, release_time)` in `src/graph/edges.py`.
+- Q: Where does price history come from? → A: Tiingo `tiingo/daily` at `/tiingo/daily/{ticker}/prices` (verified live on the free tier 2026-10-19). FMP `historical-price-full` is a dead legacy endpoint.
+- Q: How are news articles matched to watched assets? → A: Tickers are case-sensitive, as a whole word or `$TICKER`; names are case-insensitive, as a whole phrase. A name must not be followed by a letter or digit, so "Apple's results" matches "Apple" but "Applebee's" does not. A headline match gives a TARGETS weight of 1.0, a summary-only match 0.6. Unmatched articles are counted and not scored.
+- Q: How is `CORRELATES_WITH` derived? → A: Pearson r of daily log returns over `correlation_window_days`, emitted when n ≥ 20.
+- Q: How is `INFLUENCES` derived? → A: Release event study. For each release in `influence_window_days`: the indicator's change from the previous release versus the asset return from the last close available at or before the release to the first close available after it. Pearson r across releases, emitted when there are ≥ 8 releases.
+- Q: How is edge confidence computed? → A: `1 − p`, where p is the two-sided p-value of r from the Fisher z-transform. TARGETS confidence equals its weight.
+
+### Session 2026-11-04
+
+- Q: What real-time window do FRED first-release requests use? → A: Supersedes the 2026-10-19 `realtime_start=1776-07-04` answer. FRED caps the number of vintage dates one request may span, and DGS10 over the full history exceeds it (HTTP 400 "exceeds the maximum number of vintage dates allowed", 5132 vintage dates; verified live 2026-11-04). The pipeline requests `output_type=4`, `realtime_end=9999-12-31`, and `realtime_start = at − max(influence_window_days, price_history_days)` (verified live: DGS10 with a 730-day window returns 200 with 499 first-release rows). The FRED adapter's own default for ad-hoc requests is the last 730 days. FRED clips a vintage that began before the window to the window start, so a row whose `realtime_start` equals the requested `realtime_start` has no known first-release date and is dropped. A long `influence_window_days` on a daily series can still exceed the limit; that series' fetch then fails and is reported in the run's `failures`.
+
 ---
 
 ## 2. High-Level Architecture

@@ -67,17 +67,6 @@ class ProviderSpec:
         """Stable key for the rate limiter's per-provider bucket."""
         return f"provider:{self.name}"
 
-    def effective_minute_limit(self) -> int:
-        """The tightest per-minute ceiling implied by this provider's quotas."""
-        limits = []
-        if self.requests_per_minute is not None:
-            limits.append(self.requests_per_minute)
-        if self.requests_per_hour is not None:
-            limits.append(max(1, self.requests_per_hour // 60))
-        if self.requests_per_day is not None:
-            limits.append(max(1, self.requests_per_day // 1440))
-        return min(limits) if limits else 60
-
 
 # ---------------------------------------------------------------------------
 # The registry — mirrors spec.md §3.2.1 exactly

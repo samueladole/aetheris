@@ -51,6 +51,10 @@ ADAPTER_HEALTHY = "HEALTHY"
 ADAPTER_RATE_LIMITED = "RATE_LIMITED"
 ADAPTER_EXHAUSTED = "EXHAUSTED"
 
+# Statuses that reject one request (an unknown ticker, bad parameters) rather than
+# the provider's credentials or plan.
+_REQUEST_SPECIFIC_STATUSES = frozenset({400, 404, 422})
+
 
 class RegistryError(RuntimeError):
     """Raised when the registry cannot serve a data type."""
@@ -250,7 +254,12 @@ class IngestionRegistry:
                         if exc.retryable:
                             self._set_adapter_state(spec.name, ADAPTER_RATE_LIMITED)
                         else:
-                            self._set_adapter_state(spec.name, ADAPTER_EXHAUSTED)
+                            # 400/404/422 reject this request (a bad ticker), not
+                            # the provider: leave it usable for the next one.
+                            if exc.status_code in _REQUEST_SPECIFIC_STATUSES:
+                                self._set_adapter_state(spec.name, ADAPTER_HEALTHY)
+                            else:
+                                self._set_adapter_state(spec.name, ADAPTER_EXHAUSTED)
                             break
                         if retry_policy is None:
                             break
@@ -298,6 +307,9 @@ class IngestionRegistry:
                         body=payload.body,
                         fetched_at=payload.fetched_at,
                         ttl_seconds=payload.ttl_seconds,
+                        # The caller's params only: request.params is adapter-merged
+                        # and carries credentials.
+                        request_params=params,
                     )
                     payload = stored
                     if self.cache is not None:

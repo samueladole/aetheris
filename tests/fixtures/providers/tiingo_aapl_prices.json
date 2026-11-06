@@ -1,0 +1,4 @@
+[
+{"date": "2026-09-01T00:00:00.000Z", "close": 650.26, "high": 653.8, "low": 644.2, "open": 646.0, "volume": 20615000, "adjClose": 325.13, "adjHigh": 326.9, "adjLow": 322.1, "adjOpen": 323.0, "adjVolume": 41230000, "divCash": 0.0, "splitFactor": 1.0},
+{"date": "2026-09-02T00:00:00.000Z", "close": 654.8, "high": 656.0, "low": 649.0, "open": 651.0, "volume": 19450000, "adjClose": 327.4, "adjHigh": 328.0, "adjLow": 324.5, "adjOpen": 325.5, "adjVolume": 38900000, "divCash": 0.0, "splitFactor": 1.0}
+]

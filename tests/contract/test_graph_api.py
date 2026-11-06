@@ -7,7 +7,7 @@ point-in-time results, determinism, and read-only behaviour.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -304,3 +304,58 @@ class TestListAssets:
 def test_max_hops_is_two():
     """Test that max hops is two."""
     assert MAX_HOPS == 2
+
+
+class TestUtcRoundTrip:
+    """Timestamps are stored as UTC and returned as aware UTC datetimes."""
+
+    def test_summer_timestamp_round_trips_as_aware_utc(self):
+        """A July instant (London is UTC+1) is not shifted and comes back aware."""
+        from src.graph.schema import NodeType, SentimentMetric
+
+        db = GraphDatabase(":memory:")
+        repo = GraphRepository(db)
+        repo.upsert_asset(
+            Asset("equity:NASDAQ:AAPL", "AAPL", "Apple", AssetClass.EQUITY,
+                  "NASDAQ", "USD")
+        )
+        stamp = datetime(2026, 7, 14, 12, 30, tzinfo=UTC)
+        repo.upsert_sentiment_metric(
+            SentimentMetric(
+                metric_id="m-summer", entity_id="equity:NASDAQ:AAPL",
+                entity_type=NodeType.ASSET, score=0.1, confidence=0.9,
+                timestamp=stamp, source_reference="news:1", model_id="stub@0",
+                text_hash="a" * 64,
+            )
+        )
+        raw = db.execute("SELECT timestamp FROM sentiment_metric").fetchone()[0]
+        assert raw == datetime(2026, 7, 14, 12, 30)
+
+        points = sentiment_for(
+            "equity:NASDAQ:AAPL",
+            start=datetime(2026, 7, 14, tzinfo=UTC),
+            end=datetime(2026, 7, 15, tzinfo=UTC),
+            db=db,
+        )
+        assert [p["timestamp"] for p in points] == [stamp]
+        assert points[0]["timestamp"].utcoffset() == timedelta(0)
+        db.close()
+
+    def test_edge_window_round_trips_as_aware_utc(self):
+        """An upserted edge's valid_from/valid_to come back aware UTC."""
+        from src.graph.api import edges_from
+
+        db = GraphDatabase(":memory:")
+        repo = GraphRepository(db)
+        start = datetime(2026, 7, 1, 8, 15, tzinfo=UTC)
+        end = datetime(2026, 8, 1, 8, 15, tzinfo=UTC)
+        repo.upsert_edge(GraphEdge(
+            "a", "b", RelationType.CORRELATES_WITH, 0.5, 0.9, start,
+            valid_to=end, observation_count=3,
+        ))
+        edge = edges_from("a", db=db)[0]
+        assert edge["valid_from"] == start
+        assert edge["valid_to"] == end
+        assert edge["valid_from"].utcoffset() == timedelta(0)
+        assert edge["valid_to"].utcoffset() == timedelta(0)
+        db.close()

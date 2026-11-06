@@ -11,6 +11,7 @@ surfaces the failure instead of silently serving prices in its place.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, date, datetime, timedelta
 
 from src.ingestion.base import AdapterError, FetchRequest
 
@@ -20,6 +21,18 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 SUPPORTED_SERIES: tuple[str, ...] = ("GDP", "CPIAUCSL", "FEDFUNDS")
 
 ENDPOINT = "series/observations"
+
+# FRED refuses an initial-release request whose real-time window spans more
+# vintage dates than it allows: DGS10 over the full history (realtime_start
+# 1776-07-04) is an HTTP 400 "exceeds the maximum number of vintage dates
+# allowed". The default window is therefore the last two years; a caller that
+# needs more passes its own `realtime_start`.
+DEFAULT_WINDOW_DAYS = 730
+
+
+def _today() -> date:
+    """Today's UTC date; a seam for tests."""
+    return datetime.now(UTC).date()
 
 
 class FredAdapter:
@@ -46,6 +59,14 @@ class FredAdapter:
         merged = {
             "file_type": "json",
             "sort_order": "asc",
+            # Initial-release vintages: output_type 4 returns each observation
+            # as first published within the real-time window. The window is
+            # bounded by FRED's vintage-date limit (see DEFAULT_WINDOW_DAYS);
+            # a value first released before the window start comes back with
+            # its realtime_start clipped to that start.
+            "output_type": "4",
+            "realtime_start": (_today() - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat(),
+            "realtime_end": "9999-12-31",
             **dict(params),
         }
         series_id = merged.get("series_id")
@@ -68,4 +89,4 @@ class FredAdapter:
         return self.build_request(ENDPOINT, {"series_id": series_id, **params})
 
 
-__all__ = ["FredAdapter", "SUPPORTED_SERIES", "ENDPOINT", "BASE_URL"]
+__all__ = ["BASE_URL", "DEFAULT_WINDOW_DAYS", "ENDPOINT", "FredAdapter", "SUPPORTED_SERIES"]

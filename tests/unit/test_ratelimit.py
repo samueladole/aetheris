@@ -82,20 +82,64 @@ class TestSharedLimiter:
         assert all(acquired)
         assert len(acquired) == 8
 
-    def test_effective_minute_limit_uses_tightest_quota(self):
-        """Test that effective minute limit uses tightest quota."""
+    def test_hourly_quota_allows_a_burst(self):
+        """Tiingo's 50/hour does not throttle an 8-ticker burst."""
+        limiter = SharedRateLimiter()
+        spec = get_registry().get("tiingo")
+        start = time.monotonic()
+        for _ in range(8):
+            limiter.acquire(spec, timeout_s=0.01)
+        assert time.monotonic() - start < 1.0
+
+    def test_hourly_quota_is_enforced(self):
+        """Tiingo: 50 requests succeed and the 51st is refused."""
+        limiter = SharedRateLimiter()
+        spec = get_registry().get("tiingo")
+        for _ in range(50):
+            limiter.acquire(spec, timeout_s=0.01)
+        with pytest.raises(TimeoutError):
+            limiter.acquire(spec, timeout_s=0.01)
+
+    def test_daily_quota_is_enforced(self):
+        """Alpha Vantage: 25 requests succeed and the 26th is refused."""
+        limiter = SharedRateLimiter()
+        spec = get_registry().get("alpha_vantage")
+        for _ in range(25):
+            limiter.acquire(spec, timeout_s=0.01)
+        with pytest.raises(TimeoutError):
+            limiter.acquire(spec, timeout_s=0.01)
+
+    def test_minute_quota_allows_its_full_burst(self):
+        """FRED: 120 requests succeed and the 121st is refused."""
+        limiter = SharedRateLimiter()
+        spec = get_registry().get("fred")
+        for _ in range(120):
+            limiter.acquire(spec, timeout_s=0.01)
+        with pytest.raises(TimeoutError):
+            limiter.acquire(spec, timeout_s=0.01)
+
+    def test_no_window_is_consumed_when_another_is_empty(self):
+        """A refused acquire takes nothing from the windows that still had tokens."""
+        limiter = SharedRateLimiter()
         spec = ProviderSpec(
-            name="tight",
+            name="two_windows",
             module="m",
             market_endpoints=("e",),
             news_endpoints=(),
-            requests_per_minute=None,
-            requests_per_hour=12,  # -> 0/min -> floored to 1
+            requests_per_minute=1,
+            requests_per_hour=100,
             requests_per_day=None,
             fallback_order=None,
             redistribution="permitted",
         )
-        assert spec.effective_minute_limit() == 1
+        limiter.acquire(spec, timeout_s=0.01)
+        minute, hour = limiter.buckets_for(spec)
+        assert minute.available() < 1.0
+        assert hour.available() == pytest.approx(99.0, abs=0.1)
+        with pytest.raises(TimeoutError):
+            limiter.acquire(spec, timeout_s=0.01)
+        assert hour.available() == pytest.approx(99.0, abs=0.1)
+        assert limiter.available(spec) < 1.0
 
     def test_registry_providers_have_budgets(self):
         """Test that registry providers have budgets."""

@@ -21,7 +21,7 @@ from pathlib import Path
 # per DAY, so its single call is 4% of the daily allowance; Tiingo is the tightest
 # binding constraint at 50 requests per hour. Run this once, not per test run.
 REQUESTS: list[tuple[str, str, dict[str, str]]] = [
-    ("fred", "series/observations", {"series_id": "GDP"}),
+    ("fred", "series/observations", {"series_id": "GDP"}),  # adapter adds realtime params
     # Alpha Vantage: one call only — 4% of the 25/day free-tier allowance.
     ("alpha_vantage", "GLOBAL_QUOTE", {"symbol": "AAPL"}),
     ("finnhub", "quote", {"symbol": "AAPL"}),
@@ -30,7 +30,7 @@ REQUESTS: list[tuple[str, str, dict[str, str]]] = [
     ("fmp", "quote", {"symbol": "AAPL"}),
     ("fmp", "historical-price-full", {"symbol": "AAPL"}),
     ("fmp", "fmp/articles", {}),
-    ("tiingo", "tiingo/daily", {"tickers": "AAPL"}),
+    ("tiingo", "tiingo/daily", {"tickers": "AAPL", "startDate": "2026-09-01"}),
     ("tiingo", "iex", {"tickers": "AAPL"}),
     ("tiingo", "tiingo/news", {"tickers": "AAPL"}),
 ]

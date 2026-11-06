@@ -142,6 +142,34 @@ class TestGraphSpans:
         # exist for the write path.
         assert isinstance(_names(), list)
 
+    def test_observation_and_lineage_writes_emit_spans(self):
+        """The macro observation and provenance writes each open a graph.write span."""
+        from datetime import UTC, datetime
+
+        from src.graph.align import Observation
+        from src.graph.schema import NodeType, SentimentMetric
+
+        when = datetime(2026, 10, 10, tzinfo=UTC)
+        db = GraphDatabase(":memory:")
+        repo = GraphRepository(db)
+        repo.upsert_sentiment_metric(
+            SentimentMetric("m1", "equity:NASDAQ:AAPL", NodeType.ASSET, 0.1, 0.5, when,
+                            "finnhub:news:1", "stub@0", "a" * 64)
+        )
+        get_memory_exporter().clear()
+        repo.upsert_macro_observation("FRED:GDP", Observation(1.0, when, when))
+        repo.record_sentiment_provenance(
+            "m1", payload_id="p", text_hash="a" * 64, model_id="stub@0",
+            observed_at=when, available_at=when,
+        )
+        db.close()
+        operations = [
+            s.attributes.get("operation")
+            for s in get_memory_exporter().snapshot()
+            if s.name == "graph.write"
+        ]
+        assert operations == ["upsert_macro_observation", "record_sentiment_provenance"]
+
     def test_query_emits_a_span(self):
         """Test that query emits a span."""
         import argparse

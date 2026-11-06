@@ -258,6 +258,9 @@ class GraphDatabase:
         """Initialise the instance."""
         self.db_path = db_path
         self._conn = duckdb.connect(db_path)
+        # TIMESTAMP columns are naive: pin the session zone so a tz-aware value is
+        # stored as its UTC wall time, not the writing machine's local time.
+        self._conn.execute("SET TimeZone = 'UTC'")
         self._lock = threading.Lock()
         self._ensure_schema()
 
@@ -302,6 +305,8 @@ class GraphDatabase:
                 "sentiment_metric",
                 "graph_edge",
                 "macro_observation",
+                "sentiment_observation",
+                "scoring_lineage",
             ]
             return {
                 t: int(self._conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])

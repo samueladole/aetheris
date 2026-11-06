@@ -211,6 +211,11 @@ async function checkPage(browser, file, root, reporter) {
   const page = await browser.newPage();
 
   try {
+    // Hermetic: the built site references Google Fonts and other hosts, and
+    // `load` waits for them. Abort everything that is not a local file so the
+    // gate never depends on (or stalls on) the network.
+    // Local file:// requests are left unintercepted; only the rest is aborted.
+    await page.route((url) => url.protocol !== 'file:', (route) => route.abort());
     await page.goto(`file://${path.resolve(file)}`, {
       waitUntil: 'load',
       timeout: 15000,

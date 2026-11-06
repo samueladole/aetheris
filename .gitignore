@@ -60,6 +60,8 @@ secrets.yml
 *.wal
 aetheris-raw.db
 mlflow.db
+# DBOS system databases: every run checkpoints into them
+*.dbos.sqlite
 mlruns/
 mlartifacts/
 

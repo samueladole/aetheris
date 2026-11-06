@@ -22,6 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BAD_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "docs" / "a11y-bad.html"
+EXTERNAL_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "docs" / "a11y-external.html"
 RENDERED_CHECKER = REPO_ROOT / "scripts" / "check_a11y_rendered.js"
 NODE = "npx"
 
@@ -123,6 +124,25 @@ class TestRenderedGateFailsClosed:
             ["node", str(RENDERED_CHECKER), str(BAD_FIXTURE.parent)]
         )
         assert "contrast" in (proc.stdout + proc.stderr).lower()
+
+
+@requires_rendered
+class TestRenderedGateIsHermetic:
+    """The rendered gate must never wait on the network."""
+
+    def test_rendered_gate_never_waits_on_the_network(self, tmp_path):
+        """Test that an unreachable external stylesheet cannot stall the gate."""
+        import shutil
+        import time
+
+        shutil.copy(EXTERNAL_FIXTURE, tmp_path / "index.html")
+        start = time.monotonic()
+        proc = _run(["node", str(RENDERED_CHECKER), str(tmp_path)], timeout=60)
+        elapsed = time.monotonic() - start
+        output = proc.stdout + proc.stderr
+        assert proc.returncode == 0, output
+        assert "timeout" not in output.lower(), output
+        assert elapsed < 10, f"gate took {elapsed:.1f}s; it is waiting on the network"
 
 
 class TestGateWrapperFailsClosed:

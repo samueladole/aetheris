@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aetheris accessibility fixture - external resources</title>
+  <!-- Non-routable address: the connection hangs rather than refusing, so a
+       checker that waits on external resources stalls until its timeout. -->
+  <link rel="stylesheet" href="http://10.255.255.1/unreachable.css">
+</head>
+<body>
+  <main>
+    <h1>External resource fixture</h1>
+    <p style="color:#111111;background:#ffffff">Accessible text with strong contrast.</p>
+  </main>
+</body>
+</html>

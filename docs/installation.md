@@ -25,14 +25,16 @@ needs no API keys and consumes no free-tier quota.
 
 ## Live runs
 
-Set credentials in the environment — never commit them:
+Set credentials in the environment — never commit them. A live pipeline run
+needs the FRED, Finnhub, and Tiingo keys; the FMP and Alpha Vantage keys are
+optional and serve `aetheris ingest` and provider fallback:
 
 ```bash
 export FRED_API_KEY="..."
 export FINNHUB_API_KEY="..."
-export FMP_API_KEY="..."
 export TIINGO_API_KEY="..."
-export ALPHA_VANTAGE_API_KEY="..."
+export FMP_API_KEY="..."            # optional
+export ALPHA_VANTAGE_API_KEY="..."  # optional
 
 aetheris run --trigger schedule
 ```

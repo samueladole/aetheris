@@ -28,6 +28,11 @@ aetheris run [--trigger schedule|event] [--dry-run] [--resume WORKFLOW_ID]
 - `--resume WORKFLOW_ID` resumes a previously checkpointed run from the first failed step (FR-002).
 - `--dry-run` validates configuration, provider credentials, and quotas **without** issuing any
   live provider call. This is the CI smoke test.
+- A live run needs credentials for the providers the pipeline fetches from — FRED, Finnhub, and
+  Tiingo — and refuses to start (exit `2`) when one of them is missing. Alpha Vantage and FMP keys
+  are not required.
+- A fetch that fails does not fail the run. The result's `summary.failures` lists each failed
+  fetch (`kind`, `key`, `error`, credentials masked), and the text output prints them.
 
 ### `aetheris ingest`
 Run a single ingestion adapter directly (FR-004 … FR-008, FR-015).
@@ -36,6 +41,11 @@ aetheris ingest <provider> <endpoint> [--force] [--ttl SECONDS]
 ```
 - `--force` bypasses the TTL cache (FR-007); otherwise a cached payload is served.
 - Writes a raw immutable payload row (VR-8) and emits an OTel span.
+- `<provider>` is validated and must declare `<endpoint>`, but it does not pin the provider: the
+  registry serves the endpoint from the first available provider in fallback order (FR-020) that
+  declares it, which may be another provider. The output names the provider that served it.
+- FRED requests default to first releases from the last 730 days, because FRED refuses a request
+  spanning more vintage dates than it allows; pass `--param realtime_start=YYYY-MM-DD` to change it.
 
 ### `aetheris score`
 Score previously-ingested news text (FR-009, FR-010).

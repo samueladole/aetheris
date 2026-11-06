@@ -39,6 +39,15 @@ def _insert(database: GraphDatabase, sql: str):
     return database.execute(sql)
 
 
+def test_graph_connection_runs_in_utc():
+    """The connection time zone is pinned to UTC, whatever the machine's zone."""
+    database = GraphDatabase(":memory:")
+    try:
+        assert database.execute("SELECT current_setting('TimeZone')").fetchone()[0] == "UTC"
+    finally:
+        database.close()
+
+
 class TestSchemaStructure:
     """Test schema structure."""
     def test_all_tables_exist(self, db):

@@ -78,10 +78,10 @@ class TestIngestCommand:
         registry.register_adapter(FredAdapter(api_key="k"))
 
         # Route the CLI's registry construction to our scripted one.
-        import src.ingestion.registry as reg_mod
+        import src.orchestration.wiring as wiring
 
         monkeypatch.setattr(
-            reg_mod, "build_registry", lambda **kw: registry
+            wiring, "build_ingestion_registry", lambda settings, **kw: registry
         )
 
         code, out, _ = _run(

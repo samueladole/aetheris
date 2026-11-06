@@ -11,10 +11,12 @@ open-source-only constraint.
 
 ## Status
 
-Every task in both breakdowns is checked off, but **the pipeline does not run
-end to end yet**. All five layers are built and tested on their own; the steps
-that connect them are placeholders, and nothing writes to the knowledge graph
-outside tests. [Known gaps](#known-gaps) lists exactly what is missing.
+Every task in both breakdowns is checked off and **the pipeline runs end to
+end**: `aetheris run` ingests the watchlist, scores the news, aligns and upserts
+into the knowledge graph, and evaluates the result durably. A replay from the
+same stored payloads is tested to be byte-identical and free of lookahead
+([Point-in-time correctness](#point-in-time-correctness)).
+[Known gaps](#known-gaps) lists what is still missing.
 
 | Work item | Progress | Tasks |
 |---|---|---|
@@ -63,9 +65,10 @@ The pipeline runs as a **durable workflow**: on failure it resumes from the last
 completed step with bounded exponential backoff, and failed steps run
 compensating actions.
 
-That is the design. Today the workflow runs all five steps durably, but steps
-2–5 return zero counts instead of calling their layers. Each layer works when
-called directly; see [Known gaps](#known-gaps).
+That is the design, and it is what runs: the workflow executes all five steps
+durably, and each step calls its layer on the watchlist (see
+[Installation](#installation) for the default watchlist and how to change it).
+[Known gaps](#known-gaps) lists what is still missing.
 
 ---
 
@@ -183,6 +186,7 @@ Rejected on licence grounds:
 │   └── docs.yml                 # GitHub Pages deploy (feature 001-docs-site-cicd)
 ├── docs/                        # documentation site source
 │   ├── index.md · installation.md
+│   ├── architecture.md · codebase.md · roadmap.md
 │   ├── usage/                   # CLI reference, accessibility
 │   ├── stylesheets/ · overrides/
 │   ├── validation.md            # recorded gate results
@@ -253,9 +257,60 @@ cp .env.example .env      # then fill in real values
 export AETHERIS_ENV_FILE=./.env.secrets
 ```
 
-A malformed or unreadable `.env` produces a warning and the run continues with
+A malformed or unreadable `.env` produces a warning and the CLI continues with
 whatever credentials it does have — a corrupted local file never breaks the CLI.
+A live `aetheris run` then needs only the keys for the providers the pipeline
+fetches from — FRED, Finnhub, and Tiingo — and refuses to start, naming the
+missing ones, without them. The Alpha Vantage and FMP keys are optional.
 Run `aetheris status` to see which providers are configured.
+
+### Watchlist
+
+The pipeline fetches and scores what the watchlist names
+(`src/config/watchlist.py`). The defaults are eight equities and five FRED
+series:
+
+- **Assets**: `AAPL`, `MSFT`, `NVDA`, `AMZN` (NASDAQ) and `JPM`, `XOM`, `JNJ`, `KO`
+  (NYSE).
+- **Macro series**: `GDP`, `CPIAUCSL`, `UNRATE`, `FEDFUNDS`, `DGS10`.
+- **Windows**: 730 days of price history, a 126-day correlation window, and a
+  730-day influence window.
+
+To change them, add a `[watchlist]` table to the TOML config file (`--config`
+or `AETHERIS_CONFIG`). Omitted keys keep their defaults, and a malformed entry
+is refused with a `ConfigError`.
+
+The defaults are sized for a small watchlist. For the limits at the plan's
+assumed scale of about 500 assets (edge derivation grows with the square of the
+asset count), see [`docs/scale.md`](docs/scale.md).
+
+FRED first releases are requested from `max(influence_window_days,
+price_history_days)` days before the run. FRED caps how many vintage dates one
+request may span: the default 730 days fits DGS10 (daily), but a much longer
+`influence_window_days` on a daily series can exceed the cap. FRED then refuses
+that series (HTTP 400), and the run succeeds without it and lists it under
+`failures`. `aetheris ingest fred series/observations` defaults to the last 730
+days for the same reason; pass `--param realtime_start=YYYY-MM-DD` to change it.
+
+```toml
+[watchlist]
+price_history_days = 730
+correlation_window_days = 126
+influence_window_days = 730
+
+[[watchlist.assets]]
+asset_id = "equity:NASDAQ:AAPL"   # asset_class:exchange:symbol
+ticker = "AAPL"
+names = ["Apple"]                 # news text matching these names is scored for the asset
+
+[[watchlist.macro]]
+series_id = "CPIAUCSL"
+name = "Consumer Price Index for All Urban Consumers"
+unit = "index"
+frequency = "monthly"               # daily, weekly, monthly, quarterly, or annual
+seasonal_adjustment = "SA"
+release_time = "08:30"            # HH:MM New York time; omit when unknown
+```
 
 ### Live runs
 
@@ -278,11 +333,11 @@ before or after the subcommand.
 
 | Command | Purpose |
 |---|---|
-| `aetheris run` | Execute the durable pipeline (data steps are placeholders). `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
+| `aetheris run` | Execute the durable pipeline: ingest, score, graph upsert, evaluate. `--dry-run`, `--resume ID`, `--trigger schedule\|event` |
 | `aetheris ingest` | Run one adapter and store the raw payload. `--param KEY=VALUE`, `--data-type`, `--force`, `--ttl` |
-| `aetheris score` | Score literal `--text` and print the result. `--entity`, `--model`, `--temperature` |
-| `aetheris graph` | `upsert` (placeholder: counts raw payloads, writes nothing) and read-only `query` |
-| `aetheris evaluate` | Score summaries, drift, MLflow logging (placeholder: evaluates fixed sample sentences) |
+| `aetheris score` | Score the stored news (or literal `--text`) and print the payloads. `--entity`, `--since`, `--model`, `--temperature` |
+| `aetheris graph` | `upsert` (score the stored payloads, align, and write nodes, observations, and derived edges) and read-only `query` |
+| `aetheris evaluate` | Score summaries, drift against the previous 7 days of the graph's scores, MLflow logging |
 | `aetheris docs` | `build` (all gates), `serve` (localhost preview), `open` |
 | `aetheris check-licenses` | Constitution Principle I gate. `--strict`, `--lenient`, `--no-exemptions` |
 | `aetheris status` | Provider health, quotas, cache hit ratio, workflow state |
@@ -336,9 +391,9 @@ Traversal is capped at two hops; deeper returns ``UnsupportedTraversalError``
 rather than silently truncating. Same queries from the CLI:
 `aetheris graph query sentiment --entity ... --start ... --json`.
 
-Nothing in the pipeline writes to the graph yet, so these queries return empty
-results unless you populate it yourself through `GraphRepository` in
-`src/graph/repository.py`.
+`aetheris run` and `aetheris graph upsert` populate the graph through
+`GraphRepository` in `src/graph/repository.py`, so these queries return data once
+a pipeline run has completed; before that they return empty results.
 
 Contracts: [`graph-api.md`](.specify/specs/contracts/graph-api.md) ·
 [`sentiment-schema.md`](.specify/specs/contracts/sentiment-schema.md) ·
@@ -389,6 +444,10 @@ covered list are *unverified, not compliant*.
 
 Validation results are recorded in [`docs/validation.md`](docs/validation.md).
 
+For depth beyond this README, the site carries an
+[architecture guide](docs/architecture.md), a [codebase guide](docs/codebase.md),
+and a [roadmap](docs/roadmap.md) of milestones achieved and planned.
+
 ---
 
 ## Data model
@@ -429,17 +488,21 @@ state on January 31. Conflating **observation time** with **availability time**
 is the classic way a pipeline leaks future information and silently invalidates
 every downstream query.
 
-The join itself is implemented in `src/graph/align.py` and tested in
-`tests/unit/test_align.py`: a value released after the query time is invisible
-to it, timezone-naive times are refused, and aligning the same inputs twice
-gives identical rows. Two parts of the guarantee are still missing:
+The pipeline applies the rule when it derives edges (`src/graph/edges.py`): each
+price is available at that day's New York close (`close_available_at`) and each
+macro value at its first release (`release_available_at`), and a value is only
+used once its availability time has passed. The graph repository also refuses
+timezone-naive timestamps. The `align()` helper in `src/graph/align.py` is tested
+in `tests/unit/test_align.py` but is not itself called by the pipeline.
 
-- **No write path calls the join.** The graph repository refuses
-  timezone-naive timestamps, but no code routes data through `align()`
-  outside its tests.
-- **There is no end-to-end replay test.** T054 calls for an integration test
-  replaying a cassette to a byte-identical *graph* state. The unit tests above
-  cover alignment only.
+`tests/integration/test_point_in_time.py` proves the guarantee end to end:
+
+- **Replay is byte-identical.** One ingest is stored, then scoring and graph
+  integration run twice from it, with the same `at`, into two fresh DuckDB
+  files. Every table, including the derived CORRELATES_WITH and INFLUENCES edges,
+  dumps identically.
+- **A later release is not observed.** A CPI value first released the day after
+  `at`, with an extreme value, leaves the INFLUENCES edges unchanged.
 
 ---
 
@@ -570,7 +633,7 @@ Spec Kit commands: `/speckit.analyze` · `/speckit.clarify` · `/speckit.plan` �
 
 ## Verification
 
-**5 import contracts kept** · **455 tests** · **29 API reference pages**
+**5 import contracts kept** · **588 tests** · **35 API reference pages**
 
 ```bash
 pytest tests/                              # unit, contract, integration
@@ -598,22 +661,41 @@ Every task in [`tasks.md`](.specify/specs/tasks.md) is checked off, but these
 deliverables are missing or partly built. They are listed here so the task
 count does not hide them.
 
-- **The durable pipeline is a shell.** `aetheris run` executes all five steps
-  with checkpointing and retries, but the ingest, sentiment, graph, and
-  evaluation steps in `src/orchestration/workflows.py` return zero counts
-  instead of calling their layers.
-- **Nothing writes to the knowledge graph.** Only tests call the upsert
-  methods on `GraphRepository`. `aetheris graph upsert` counts eligible raw
-  payloads and exits without aligning or writing anything (T064).
-- **Alignment is not on any write path.** `src/graph/align.py` implements the
-  as-of join (T060), but nothing outside its tests calls it.
-- **`aetheris score` reads only `--text`.** It cannot score ingested payloads,
-  and it prints results rather than storing them. A code comment points to
-  T065 for this, but T065 is the graph-write telemetry task.
-- **`aetheris evaluate` evaluates three hard-coded sample sentences**, not
-  scored data, so its drift and MLflow output says nothing about real runs.
-- **The point-in-time replay test is narrower than specified.** See
-  [Point-in-time correctness](#point-in-time-correctness).
+- **Alignment is applied by the edge derivation, not by `align()`.** The write
+  path applies the backward as-of rule through `src/graph/edges.py`, using
+  availability times from `close_available_at` and `release_available_at`. The
+  `align()` helper in `src/graph/align.py` (T060) is tested but is not called by
+  the pipeline.
+- **The pipeline scores with the stub model.** `aetheris run` and
+  `aetheris graph upsert` call `run_sentiment` with its default
+  `model_id="stub"`: the deterministic lexical scorer used in tests, not
+  FinSense-ModernBERT or another checkpoint in `src/sentiment/models.py`. Their
+  scores exercise the pipeline but are not model-quality sentiment.
+  `aetheris score --model MODEL_ID` already runs a permitted model; the
+  pipeline needs a setting passed through to `run_sentiment`'s `model_id`, and
+  the ML extras installed, to do the same.
+- **Quotas are counted per process, not per calendar day.** The rate limiter
+  (`src/ingestion/ratelimit.py`) keeps its token buckets in memory, so every
+  new `aetheris` process starts with full daily and hourly budgets. Several
+  runs in one day can exceed a provider's daily quota.
+- **A failed fetch is not retried within the run.** `run_ingest` passes no
+  retry policy to the registry, so a transient error drops that series, ticker,
+  or feed for the run. The run still succeeds and lists the fetch under
+  `failures`.
+- **News comes only from Finnhub's `general` category.** Tiingo and FMP news
+  and per-company Finnhub news are not fetched; an article reaches a watched
+  asset only by naming it.
+- **`aetheris ingest <provider>` may be served by another provider.** The
+  provider must declare the endpoint, but the registry serves it from the first
+  available provider in fallback order; the output names which one answered.
+- **`graph upsert --rebuild-edges` does nothing extra, and `--since/--until`
+  filter only the sentiment metrics.** Derived edges are recomputed as of now
+  on every upsert, so the flag changes nothing but a trace attribute; the
+  window does not limit macro observations or edges.
+- **Old graph files can hold local-time rows.** A graph written on a non-UTC
+  host before the graph database pinned DuckDB's time zone to UTC keeps the
+  timestamps it was written with. Rebuild such a file rather than mixing it
+  with new runs.
 - **The CLI query grammar differs from its contract.**
   [`cli.md`](.specify/specs/contracts/cli.md) specifies a top-level
   `aetheris query` with `assets --limit N`; the CLI has `aetheris graph query`

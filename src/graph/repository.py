@@ -16,7 +16,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from src.graph.align import AlignmentError
+from src.graph.align import AlignmentError, Observation
 from src.graph.schema import (
     Asset,
     AssetClass,
@@ -124,23 +124,23 @@ class GraphRepository:
         )
 
     def upsert_sentiment_metric(self, metric: SentimentMetric) -> None:
-        """Upsert one SentimentMetric.
+        """Insert one SentimentMetric unless its ``metric_id`` already exists.
 
         The metric id already contains the model and revision, so re-scoring with
         a different model creates a *distinct* row rather than overwriting
         (data-model.md §1.3), and scoring the same text with the same model is a
         no-op.
+
+        SentimentMetric is append-only, so an existing row is kept as first
+        written rather than updated. That is also required: once
+        ``sentiment_observation`` references the row by foreign key, DuckDB
+        rejects an update of its indexed columns.
         """
         self.db.execute(
             "INSERT INTO sentiment_metric (metric_id, entity_id, entity_type, score,"
             " confidence, timestamp, source_reference, model_id, text_hash, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)"
-            " ON CONFLICT (metric_id) DO UPDATE SET"
-            " entity_id=excluded.entity_id, entity_type=excluded.entity_type,"
-            " score=excluded.score, confidence=excluded.confidence,"
-            " timestamp=excluded.timestamp, source_reference=excluded.source_reference,"
-            " model_id=excluded.model_id, text_hash=excluded.text_hash,"
-            " created_at=excluded.created_at",
+            " ON CONFLICT (metric_id) DO NOTHING",
             [
                 metric.metric_id,
                 metric.entity_id,
@@ -154,6 +154,65 @@ class GraphRepository:
                 _as_utc(metric.created_at or metric.timestamp),
             ],
         )
+
+    # ------------------------------------------------------------------
+    # Observations and lineage (VR-5, VR-7)
+    # ------------------------------------------------------------------
+    def upsert_macro_observation(self, indicator_code: str, observation: Observation) -> None:
+        """Upsert one macro value. Idempotent on ``(indicator_code, observed_at)``."""
+        from src.observability.telemetry import span
+
+        with span(
+            "graph.write",
+            operation="upsert_macro_observation",
+            table="macro_observation",
+        ):
+            self.db.execute(
+                "INSERT INTO macro_observation (indicator_code, observed_at,"
+                " available_at, value) VALUES (?,?,?,?)"
+                " ON CONFLICT (indicator_code, observed_at) DO UPDATE SET"
+                " available_at=excluded.available_at, value=excluded.value",
+                [
+                    indicator_code,
+                    _as_utc(observation.observed_at),
+                    _as_utc(observation.available_at),
+                    float(observation.value),  # type: ignore[arg-type]
+                ],
+            )
+
+    def record_sentiment_provenance(
+        self,
+        metric_id: str,
+        *,
+        payload_id: str,
+        text_hash: str,
+        model_id: str,
+        observed_at: datetime,
+        available_at: datetime,
+    ) -> None:
+        """Record when a metric's text was knowable and which raw payload it came from.
+
+        Writes one ``sentiment_observation`` and one ``scoring_lineage`` row (VR-7).
+        Idempotent on ``metric_id``: like the metric itself, both rows are kept
+        as first written. The metric must already exist.
+        """
+        from src.observability.telemetry import span
+
+        with span(
+            "graph.write",
+            operation="record_sentiment_provenance",
+            table="sentiment_observation,scoring_lineage",
+        ):
+            self.db.execute(
+                "INSERT INTO sentiment_observation (metric_id, observed_at, available_at)"
+                " VALUES (?,?,?) ON CONFLICT (metric_id) DO NOTHING",
+                [metric_id, _as_utc(observed_at), _as_utc(available_at)],
+            )
+            self.db.execute(
+                "INSERT INTO scoring_lineage (metric_id, payload_id, text_hash, model_id)"
+                " VALUES (?,?,?,?) ON CONFLICT (metric_id) DO NOTHING",
+                [metric_id, payload_id, text_hash, model_id],
+            )
 
     # ------------------------------------------------------------------
     # Edge upserts (T061)
